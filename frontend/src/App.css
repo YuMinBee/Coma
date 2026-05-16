@@ -481,6 +481,41 @@ textarea.input-area::placeholder {
   font-size: 0.8rem;
 }
 
+.finding-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.15rem;
+}
+
+.finding-meta span:not(:last-child)::after {
+  content: '·';
+  margin-left: 0.35rem;
+  color: var(--border-strong);
+}
+
+.finding-quote {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 0.35rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-deep);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.finding-action {
+  display: block;
+  margin-top: 0.25rem;
+}
+
 .severity {
   display: inline-block;
   padding: 0.15rem 0.5rem;
