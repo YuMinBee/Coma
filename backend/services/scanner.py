@@ -4,16 +4,40 @@ from services.rule_scanner import scan_by_rules
 from services import gemma_analyzer
 from services.masking import apply_masking
 
+SOURCE_ORDER = {
+    "gemma": 0,
+    "regex": 1,
+    "rule": 2,
+}
+
 
 def _dedupe_findings(findings: list[Finding]) -> list[Finding]:
     seen: set[str] = set()
+    seen_spans: set[tuple[int, int, str]] = set()
     result: list[Finding] = []
     for f in findings:
-        key = f"{f.source}:{f.type}:{f.line}:{f.start}:{f.value[:40]}"
+        if f.start is not None and f.end is not None:
+            span_key = (f.start, f.end, f.category)
+            if span_key in seen_spans:
+                continue
+            seen_spans.add(span_key)
+
+        key = f"{f.category}:{f.type}:{f.line}:{f.start}:{f.end}:{f.value[:60].lower()}"
         if key not in seen:
             seen.add(key)
             result.append(f)
     return result
+
+
+def _sort_findings(findings: list[Finding]) -> list[Finding]:
+    return sorted(
+        findings,
+        key=lambda f: (
+            SOURCE_ORDER.get(f.source, 99),
+            f.line if f.line is not None else 999_999,
+            f.start if f.start is not None else 999_999,
+        ),
+    )
 
 
 def _compute_risk(findings: list[Finding], gemma_level: str) -> tuple[str, int]:
@@ -97,6 +121,8 @@ async def run_scan(text: str, use_gemma: bool = True, filename: str | None = Non
         gemma_findings, gemma_level, gemma_summary = await gemma_analyzer.analyze_with_gemma(text)
         all_findings = _dedupe_findings(all_findings + gemma_findings)
         gemma_used = True
+
+    all_findings = _sort_findings(all_findings)
 
     risk_level, risk_score = _compute_risk(all_findings, gemma_level)
     masked_text = apply_masking(text, all_findings)

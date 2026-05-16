@@ -273,8 +273,15 @@ export default function App() {
                           </span>
                           <span className="source-tag">{f.source}</span>
                         </strong>
-                        {f.line && <span>줄 {f.line} · </span>}
+                        <div className="finding-meta">
+                          {f.line && <span>줄 {f.line}</span>}
+                          {typeof f.confidence === 'number' && (
+                            <span>신뢰도 {Math.round(f.confidence * 100)}%</span>
+                          )}
+                        </div>
                         <span>{f.reason || f.value}</span>
+                        {f.exact_quote && <code className="finding-quote">{f.exact_quote}</code>}
+                        {f.action && <span className="finding-action">{f.action}</span>}
                       </div>
                     </li>
                   ))}

@@ -15,6 +15,8 @@ class Finding(BaseModel):
     end: int | None = None
     line: int | None = None
     severity: Literal["HIGH", "MEDIUM", "LOW"]
+    exact_quote: str | None = None
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     reason: str | None = None
     action: str | None = None
     source: Literal["regex", "rule", "gemma"]
