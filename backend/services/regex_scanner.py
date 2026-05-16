@@ -1,4 +1,5 @@
 import re
+
 from models.schemas import Finding
 
 PATTERNS: list[tuple[str, str, str, str]] = [
@@ -16,9 +17,19 @@ PATTERNS: list[tuple[str, str, str, str]] = [
     ("Internal Domain", r"\b[\w-]+\.(?:internal|local|corp|company)\b", "INFRA_INFO", "MEDIUM"),
 ]
 
+ACTION_BY_CATEGORY = {
+    "SECRET": "실제 값을 제거하거나 [MASKED_SECRET] 형태로 치환하세요.",
+    "INFRA_INFO": "내부 주소, DB URL, 서비스 식별자는 일반화해서 공유하세요.",
+    "CUSTOMER_INFO": "개인정보나 고객 식별자는 마스킹한 뒤 공유하세요.",
+}
+
 
 def _line_number(text: str, pos: int) -> int:
     return text[:pos].count("\n") + 1
+
+
+def _short(value: str, limit: int = 160) -> str:
+    return value[:limit] + ("..." if len(value) > limit else "")
 
 
 def scan_by_regex(text: str) -> list[Finding]:
@@ -27,20 +38,25 @@ def scan_by_regex(text: str) -> list[Finding]:
 
     for name, pattern, category, severity in PATTERNS:
         for match in re.finditer(pattern, text):
+            quote = match.group()
             span = (match.start(), match.end())
             if span in seen_spans:
                 continue
             seen_spans.add(span)
+
             findings.append(
                 Finding(
                     type=name,
                     category=category,
-                    value=match.group()[:80] + ("..." if len(match.group()) > 80 else ""),
+                    value=_short(quote),
                     start=match.start(),
                     end=match.end(),
                     line=_line_number(text, match.start()),
                     severity=severity,
-                    reason=f"정규식 패턴으로 {name} 탐지",
+                    exact_quote=quote,
+                    confidence=0.99,
+                    reason=f"{name} 정규식 패턴과 일치하는 민감 값이 발견되었습니다.",
+                    action=ACTION_BY_CATEGORY.get(category, "해당 값을 제거하거나 일반화해서 공유하세요."),
                     source="regex",
                 )
             )
