@@ -3,16 +3,20 @@ import {
   Shield,
   ScanSearch,
   Upload,
-  Copy,
   FolderOpen,
   Sun,
   Moon,
-  RotateCcw,
+  PanelRightOpen,
 } from 'lucide-react'
 import './App.css'
 import { SAMPLES, DEFAULT_SAMPLE_ID } from './samples'
 import { useTheme } from './hooks/useTheme'
+import { useSessions } from './hooks/useSessions'
+import { defaultArtifactTab } from './hooks/useArtifactPanel'
 import { IMPORT_CONTEXTS, MAX_FOLDER_FILES, MAX_FILE_BYTES } from './constants'
+import Sidebar from './components/Sidebar'
+import ArtifactPanel from './components/ArtifactPanel'
+import ChatBubble from './components/ChatBubble'
 
 let msgId = 0
 const nextId = () => `m-${++msgId}`
@@ -44,32 +48,51 @@ async function mergeFiles(files) {
   return parts.join('\n\n')
 }
 
+function previewLines(text, maxLines = 8) {
+  return text.split('\n').slice(0, maxLines).join('\n')
+}
+
 export default function App() {
-  const { theme, toggle, isDark } = useTheme()
+  const { toggle, isDark } = useTheme()
+  const {
+    sessions,
+    activeSession,
+    createNewSession,
+    switchContext,
+    selectSession,
+    patchActive,
+    contextLabel,
+  } = useSessions('ai')
+
   const [text, setText] = useState('')
   const [useGemma, setUseGemma] = useState(true)
   const [loading, setLoading] = useState(false)
-  const [loadingStep, setLoadingStep] = useState('')
-  const [messages, setMessages] = useState([])
-  const [lastResult, setLastResult] = useState(null)
-  const [error, setError] = useState(null)
   const [health, setHealth] = useState(null)
   const [toast, setToast] = useState(null)
   const [sampleId, setSampleId] = useState(DEFAULT_SAMPLE_ID)
-  const [importContext, setImportContext] = useState('ai')
   const [dragActive, setDragActive] = useState(false)
+  const [error, setError] = useState(null)
 
   const fileRef = useRef(null)
   const folderRef = useRef(null)
   const streamRef = useRef(null)
 
+  const importContext = activeSession?.contextId ?? 'ai'
+  const messages = activeSession?.messages ?? []
+  const lastResult = activeSession?.lastResult ?? null
+  const panel = activeSession?.panel ?? {
+    open: false,
+    tab: 'masked',
+    expandedFindingIndices: [],
+  }
+  const expandedFindingIndices = panel.expandedFindingIndices ?? []
+
   const activeContext = IMPORT_CONTEXTS.find((c) => c.id === importContext) || IMPORT_CONTEXTS[0]
+  const panelOpen = panel.open && !!lastResult
 
   const scrollBottom = useCallback(() => {
     requestAnimationFrame(() => {
-      if (streamRef.current) {
-        streamRef.current.scrollTop = streamRef.current.scrollHeight
-      }
+      if (streamRef.current) streamRef.current.scrollTop = streamRef.current.scrollHeight
     })
   }, [])
 
@@ -90,8 +113,101 @@ export default function App() {
     setTimeout(() => setToast(null), 2000)
   }
 
-  const addMessage = (msg) => {
-    setMessages((prev) => [...prev, { id: nextId(), ...msg }])
+  const openPanel = (tab, findingIndex = null) => {
+    const indices = [...expandedFindingIndices]
+    if (findingIndex !== null && findingIndex !== undefined && !indices.includes(findingIndex)) {
+      indices.push(findingIndex)
+    }
+    patchActive({
+      panel: { open: true, tab, expandedFindingIndices: indices },
+    })
+  }
+
+  const toggleFindingExpand = (index) => {
+    const indices = [...expandedFindingIndices]
+    const pos = indices.indexOf(index)
+    if (pos >= 0) indices.splice(pos, 1)
+    else indices.push(index)
+    indices.sort((a, b) => a - b)
+    patchActive({
+      panel: { ...panel, expandedFindingIndices: indices },
+    })
+  }
+
+  const closePanel = () => {
+    patchActive({ panel: { ...panel, open: false } })
+  }
+
+  const pushMessage = (msg) => {
+    patchActive({ messages: [...messages, { id: nextId(), ...msg }] })
+  }
+
+  const applyScanResult = (data, titlePatch = {}) => {
+    const rc = riskClass(data.risk_level)
+    patchActive((session) => {
+      const base = session.messages.filter((m) => m.type !== 'loading')
+      const newMessages = [
+        ...base,
+        {
+          id: nextId(),
+          role: 'assistant',
+          type: 'risk',
+          riskClass: rc,
+          title: '유출 위험도 분석 완료',
+          riskLevel: data.risk_level,
+          riskScore: data.risk_score,
+          tags: [
+            `위험 ${data.risk_level}`,
+            `${data.findings.length}건 탐지`,
+            data.gemma_used ? 'Gemma 적용' : '규칙 기반',
+          ],
+          recommendations: data.recommendations,
+        },
+      ]
+      if (data.findings.length > 0) {
+        newMessages.push({
+          id: nextId(),
+          role: 'assistant',
+          type: 'findings',
+          title: '탐지 항목',
+          findings: data.findings,
+          total: data.findings.length,
+        })
+      }
+
+      const promptTitle =
+        session.contextId === 'ai'
+          ? '안전 프롬프트 (외부 AI용)'
+          : '외부 반입용 안전 텍스트'
+
+      newMessages.push({
+        id: nextId(),
+        role: 'assistant',
+        type: 'masked',
+        title: '마스킹된 내용',
+        body: data.masked_text,
+      })
+
+      newMessages.push({
+        id: nextId(),
+        role: 'assistant',
+        type: 'prompt',
+        title: promptTitle,
+        body: data.safe_prompt,
+        note: !data.gemma_used ? 'Gemma 미연결 — 규칙 기반 템플릿으로 생성됨' : null,
+      })
+
+      return {
+        ...titlePatch,
+        messages: newMessages,
+        lastResult: data,
+        panel: {
+          open: true,
+          tab: defaultArtifactTab(session.contextId),
+          expandedFindingIndices: [],
+        },
+      }
+    })
   }
 
   const runScanWithContent = async (content, label = '붙여넣기', filename = null) => {
@@ -99,38 +215,34 @@ export default function App() {
       setError('검사할 내용이 없습니다.')
       return
     }
-
     setLoading(true)
     setError(null)
-    setLastResult(null)
-    setLoadingStep('1차: 정규식 민감정보 탐지 중...')
+    setText('')
 
-    addMessage({
+    const userMsg = {
+      id: nextId(),
       role: 'user',
       title: label,
       preview: content.slice(0, 1200) + (content.length > 1200 ? '\n…' : ''),
       tags: [activeContext.label, filename || '텍스트'].filter(Boolean),
+    }
+    const agentId = nextId()
+    patchActive({
+      messages: [
+        ...messages,
+        userMsg,
+        { id: agentId, role: 'assistant', type: 'loading', title: '보안 에이전트', step: '1차: 정규식 탐지 중…' },
+      ],
     })
 
-    const agentId = nextId()
-    setMessages((prev) => [
-      ...prev,
-      { id: agentId, role: 'assistant', type: 'loading', title: '보안 에이전트', step: loadingStep },
-    ])
-
-    const steps = [
-      '2차: 코드/로그 규칙 탐지 중...',
-      '3차: Gemma 문맥 분석 중...',
-      '마스킹 및 안전 프롬프트 생성 중...',
-    ]
+    const steps = ['2차: 규칙 탐지 중…', '3차: Gemma 문맥 분석 중…', '마스킹 및 안전 프롬프트 생성 중…']
     let stepIdx = 0
     const timer = setInterval(() => {
       if (stepIdx < steps.length) {
         const step = steps[stepIdx++]
-        setLoadingStep(step)
-        setMessages((prev) =>
-          prev.map((m) => (m.id === agentId ? { ...m, step } : m)),
-        )
+        patchActive((session) => ({
+          messages: session.messages.map((m) => (m.id === agentId ? { ...m, step } : m)),
+        }))
       }
     }, 900)
 
@@ -142,119 +254,38 @@ export default function App() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || '검사 중 오류가 발생했습니다.')
-
-      setLastResult(data)
-      setText('')
-
-      setMessages((prev) => prev.filter((m) => m.id !== agentId))
-
-      const rc = riskClass(data.risk_level)
-      addMessage({
-        role: 'assistant',
-        type: 'risk',
-        riskClass: rc,
-        title: '유출 위험도 분석 완료',
-        riskLevel: data.risk_level,
-        riskScore: data.risk_score,
-        tags: [
-          `위험 ${data.risk_level}`,
-          `${data.findings.length}건 탐지`,
-          data.gemma_used ? 'Gemma 적용' : '규칙 기반',
-        ],
-        recommendations: data.recommendations,
-      })
-
-      if (data.findings.length > 0) {
-        addMessage({
-          role: 'assistant',
-          type: 'findings',
-          title: '탐지 항목',
-          findings: data.findings.slice(0, 12),
-          total: data.findings.length,
-        })
-      }
-
-      addMessage({
-        role: 'assistant',
-        type: 'masked',
-        title: '마스킹된 내용',
-        body: data.masked_text,
-        onCopy: () => copyText(data.masked_text, '마스킹 내용'),
-      })
-
-      addMessage({
-        role: 'assistant',
-        type: 'prompt',
-        title:
-          importContext === 'ai'
-            ? '안전 프롬프트 (외부 AI용)'
-            : '외부 반입용 안전 텍스트',
-        body: data.safe_prompt,
-        note: !data.gemma_used
-          ? 'Gemma 미연결 — 규칙 기반 템플릿으로 생성됨'
-          : null,
-        onCopy: () => copyText(data.safe_prompt, '안전 텍스트'),
-      })
+      const title = filename || label.slice(0, 40) || '검사'
+      applyScanResult(data, { title })
     } catch (e) {
       setError(e.message)
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === agentId
-            ? { ...m, type: 'error', title: '검사 실패', body: e.message }
-            : m,
-        ),
-      )
+      patchActive((session) => ({
+        messages: [
+          ...session.messages.filter((m) => m.type !== 'loading'),
+          { id: nextId(), role: 'assistant', type: 'error', title: '검사 실패', body: e.message },
+        ],
+      }))
     } finally {
       clearInterval(timer)
       setLoading(false)
-      setLoadingStep('')
     }
   }
 
   const runScanFile = async (file) => {
-    const fd = new FormData()
-    fd.append('file', file)
     setLoading(true)
     setError(null)
-    addMessage({
+    pushMessage({
       role: 'user',
       title: '파일 업로드',
       preview: file.name,
       tags: [activeContext.label, file.name],
     })
     try {
-      const res = await fetch(`/api/scan/file?use_gemma=${useGemma}`, {
-        method: 'POST',
-        body: fd,
-      })
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch(`/api/scan/file?use_gemma=${useGemma}`, { method: 'POST', body: fd })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || '파일 검사 실패')
-      setLastResult(data)
-      const rc = riskClass(data.risk_level)
-      addMessage({
-        role: 'assistant',
-        type: 'risk',
-        riskClass: rc,
-        title: '파일 검사 완료',
-        riskLevel: data.risk_level,
-        riskScore: data.risk_score,
-        tags: [file.name, `위험 ${data.risk_level}`],
-        recommendations: data.recommendations,
-      })
-      addMessage({
-        role: 'assistant',
-        type: 'masked',
-        title: '마스킹된 내용',
-        body: data.masked_text,
-        onCopy: () => copyText(data.masked_text, '마스킹'),
-      })
-      addMessage({
-        role: 'assistant',
-        type: 'prompt',
-        title: '외부 반입용 안전 텍스트',
-        body: data.safe_prompt,
-        onCopy: () => copyText(data.safe_prompt, '안전 텍스트'),
-      })
+      applyScanResult(data, { title: file.name })
     } catch (e) {
       setError(e.message)
     } finally {
@@ -298,9 +329,8 @@ export default function App() {
       for (const item of items) {
         if (item.kind === 'file') {
           const entry = item.webkitGetAsEntry?.()
-          if (entry?.isDirectory) {
-            await walkEntry(entry, '', files)
-          } else {
+          if (entry?.isDirectory) await walkEntry(entry, '', files)
+          else {
             const f = item.getAsFile()
             if (f) files.push(f)
           }
@@ -309,10 +339,8 @@ export default function App() {
     } else {
       files.push(...Array.from(e.dataTransfer.files || []))
     }
-    if (files.length === 0) return
-    if (files.length === 1 && !files[0].webkitRelativePath) {
-      return runScanFile(files[0])
-    }
+    if (!files.length) return
+    if (files.length === 1 && !files[0].webkitRelativePath) return runScanFile(files[0])
     const merged = await mergeFiles(files)
     runScanWithContent(merged, '드래그 입력', `${files.length}개 파일`)
   }
@@ -331,9 +359,7 @@ export default function App() {
       } else if (entry.isDirectory) {
         const reader = entry.createReader()
         reader.readEntries(async (entries) => {
-          for (const ent of entries) {
-            await walkEntry(ent, path + entry.name + '/', out)
-          }
+          for (const ent of entries) await walkEntry(ent, path + entry.name + '/', out)
           resolve()
         })
       } else resolve()
@@ -347,11 +373,8 @@ export default function App() {
     runScanWithContent(sample.text, sample.label)
   }
 
-  const resetChat = () => {
-    setMessages([])
-    setLastResult(null)
-    setError(null)
-    setText('')
+  const handleContextSwitch = (ctxId) => {
+    if (ctxId !== importContext) switchContext(ctxId)
   }
 
   const healthLabel = health
@@ -361,7 +384,7 @@ export default function App() {
     : '연결 확인 중…'
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${panelOpen ? 'app-shell--panel-open' : ''}`}>
       <div className="bg-grid" />
       <div className="bg-glow bg-glow--1" />
       <div className="bg-glow bg-glow--2" />
@@ -380,14 +403,19 @@ export default function App() {
           <span className={`status-pill ${health?.gemma_available ? '' : 'status-pill--warn'}`}>
             {healthLabel}
           </span>
+          {!panelOpen && lastResult && (
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={() => openPanel(panel.tab)}
+              title="결과 패널 열기"
+            >
+              <PanelRightOpen size={16} />
+            </button>
+          )}
           <button type="button" className="icon-btn" onClick={toggle} title="테마 전환">
             {isDark ? <Sun size={16} /> : <Moon size={16} />}
           </button>
-          {messages.length > 0 && (
-            <button type="button" className="icon-btn" onClick={resetChat} title="대화 초기화">
-              <RotateCcw size={16} />
-            </button>
-          )}
         </div>
       </header>
 
@@ -397,7 +425,7 @@ export default function App() {
             key={ctx.id}
             type="button"
             className={`context-chip ${importContext === ctx.id ? 'context-chip--active' : ''}`}
-            onClick={() => setImportContext(ctx.id)}
+            onClick={() => handleContextSwitch(ctx.id)}
           >
             <span>{ctx.icon}</span>
             {ctx.label}
@@ -406,236 +434,143 @@ export default function App() {
       </div>
       <p className="context-hint">{activeContext.hint}</p>
 
-      <main
-        className={`chat-app ${dragActive ? 'drag-active' : ''}`}
-        onDragEnter={(e) => {
-          e.preventDefault()
-          setDragActive(true)
-        }}
-        onDragLeave={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget)) setDragActive(false)
-        }}
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={handleDrop}
-      >
-        <div className="chat-stream" ref={streamRef}>
-          {messages.length === 0 && (
-            <div className="welcome-card">
-              <h2>외부로 나가기 전, 여기서 먼저 검사하세요</h2>
-              <p>
-                AI 질문, Git push, 파일 공유, 협업 도구 전송 등{' '}
-                <strong>외부 반입·유출</strong>이 일어나기 전에 민감정보를 탐지하고
-                마스킹합니다.
-              </p>
-              <ul className="welcome-list">
-                <li>3단계 탐지: 정규식 → 규칙 → Gemma 문맥 분석</li>
-                <li>파일·폴더 드래그 또는 붙여넣기 지원</li>
-                <li>마스킹 결과 + 외부 공유용 안전 텍스트 생성</li>
-              </ul>
-            </div>
-          )}
+      <div className="workspace">
+        <Sidebar
+          sessions={sessions}
+          activeId={activeSession?.id}
+          onSelect={selectSession}
+          onNewScan={() => createNewSession(importContext)}
+          contextLabel={contextLabel}
+        />
 
-          {messages.map((m) => (
-            <ChatBubble key={m.id} message={m} onCopy={copyText} />
-          ))}
-
-          {error && (
-            <div className="chat-message">
-              <div className="avatar">!</div>
-              <div className="bubble" style={{ borderColor: 'var(--danger)' }}>
-                <strong>오류</strong>
-                <p>{error}</p>
+        <main
+          className={`chat-app ${dragActive ? 'drag-active' : ''}`}
+          onDragEnter={(e) => {
+            e.preventDefault()
+            setDragActive(true)
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget)) setDragActive(false)
+          }}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={handleDrop}
+        >
+          <div className="chat-stream" ref={streamRef}>
+            {messages.length === 0 && (
+              <div className="welcome-card">
+                <h2>외부로 나가기 전, 여기서 먼저 검사하세요</h2>
+                <p>
+                  AI 질문, Git push, 파일 공유, 협업 도구 전송 등{' '}
+                  <strong>외부 반입·유출</strong> 전에 민감정보를 탐지·마스킹합니다.
+                </p>
+                <ul className="welcome-list">
+                  <li>검사 이력은 왼쪽에서 확인</li>
+                  <li>긴 결과는 오른쪽 패널에서 확인 (Gemini형)</li>
+                  <li>메뉴 변경 시 새 검사 세션이 시작됩니다</li>
+                </ul>
               </div>
-            </div>
-          )}
-        </div>
+            )}
 
-        <section className="composer">
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            disabled={loading}
-            placeholder="코드, 로그, 설정, 문서를 붙여넣거나 파일·폴더를 드래그하세요. 외부 AI / Git / 공유 전에 검사합니다."
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleScan()
-            }}
-          />
-          <div className="composer-actions">
-            <div className="left-actions">
-              <label className="tool-btn">
-                <Upload size={14} />
-                파일
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".txt,.log,.env,.py,.java,.js,.ts,.json,.yml,.yaml,.properties,.md"
-                  onChange={handleFile}
-                />
-              </label>
-              <label className="tool-btn">
-                <FolderOpen size={14} />
-                폴더
-                <input
-                  ref={folderRef}
-                  type="file"
-                  webkitdirectory=""
-                  directory=""
-                  multiple
-                  onChange={handleFolder}
-                />
-              </label>
-              <select
-                className="sample-select"
-                value={sampleId}
-                onChange={(e) => {
-                  setSampleId(e.target.value)
-                  loadSample(e.target.value)
-                }}
-                disabled={loading}
-              >
-                {SAMPLES.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-              <label className="toggle-pill">
-                <input
-                  type="checkbox"
-                  checked={useGemma}
-                  onChange={(e) => setUseGemma(e.target.checked)}
-                />
-                Gemma
-              </label>
-            </div>
-            <button type="button" className="scan-btn" onClick={handleScan} disabled={loading}>
-              <ScanSearch size={16} />
-              {loading ? '검사 중…' : '검사 실행'}
-            </button>
+            {messages.map((m) => (
+              <ChatBubble
+                key={m.id}
+                message={m}
+                onOpenPanel={openPanel}
+                onCopy={copyText}
+                expandedFindingIndices={expandedFindingIndices}
+                onToggleFinding={toggleFindingExpand}
+              />
+            ))}
+
+            {error && (
+              <div className="chat-message">
+                <div className="avatar">!</div>
+                <div className="bubble" style={{ borderColor: 'var(--danger)' }}>
+                  <strong>오류</strong>
+                  <p>{error}</p>
+                </div>
+              </div>
+            )}
           </div>
-        </section>
-      </main>
+
+          <section className="composer">
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              disabled={loading}
+              placeholder="코드, 로그, 설정, 문서를 붙여넣거나 파일·폴더를 드래그하세요."
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleScan()
+              }}
+            />
+            <div className="composer-actions">
+              <div className="left-actions">
+                <label className="tool-btn">
+                  <Upload size={14} /> 파일
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept=".txt,.log,.env,.py,.java,.js,.ts,.json,.yml,.yaml,.properties,.md"
+                    onChange={handleFile}
+                  />
+                </label>
+                <label className="tool-btn">
+                  <FolderOpen size={14} /> 폴더
+                  <input
+                    ref={folderRef}
+                    type="file"
+                    webkitdirectory=""
+                    directory=""
+                    multiple
+                    onChange={handleFolder}
+                  />
+                </label>
+                <select
+                  className="sample-select"
+                  value={sampleId}
+                  onChange={(e) => {
+                    setSampleId(e.target.value)
+                    loadSample(e.target.value)
+                  }}
+                  disabled={loading}
+                >
+                  {SAMPLES.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+                <label className="toggle-pill">
+                  <input
+                    type="checkbox"
+                    checked={useGemma}
+                    onChange={(e) => setUseGemma(e.target.checked)}
+                  />
+                  Gemma
+                </label>
+              </div>
+              <button type="button" className="scan-btn" onClick={handleScan} disabled={loading}>
+                <ScanSearch size={16} />
+                {loading ? '검사 중…' : '검사 실행'}
+              </button>
+            </div>
+          </section>
+        </main>
+
+        <ArtifactPanel
+          open={panelOpen}
+          tab={panel.tab}
+          onTabChange={(tab) => openPanel(tab)}
+          onClose={closePanel}
+          result={lastResult}
+          contextId={importContext}
+          expandedFindingIndices={expandedFindingIndices}
+          onToggleFinding={toggleFindingExpand}
+          onCopy={copyText}
+        />
+      </div>
 
       {toast && <div className="copy-toast">{toast}</div>}
-    </div>
-  )
-}
-
-function ChatBubble({ message: m }) {
-  const isUser = m.role === 'user'
-
-  if (m.type === 'loading') {
-    return (
-      <div className="chat-message">
-        <div className="avatar">AI</div>
-        <div className="bubble">
-          <strong>{m.title}</strong>
-          <p>{m.step || '분석 중…'}</p>
-          <div className="typing-dots">
-            <span />
-            <span />
-            <span />
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (m.type === 'risk') {
-    return (
-      <div className={`chat-message risk-${m.riskClass}`}>
-        <div className="avatar">AI</div>
-        <div className="bubble">
-          <strong>{m.title}</strong>
-          <p className={`risk-score-line ${m.riskClass}`}>
-            {m.riskLevel} · {m.riskScore}/100
-          </p>
-          {m.recommendations?.map((r, i) => (
-            <p key={i} style={{ marginTop: 6 }}>
-              → {r}
-            </p>
-          ))}
-          <div className="message-tags">
-            {m.tags?.map((t) => (
-              <span key={t}>{t}</span>
-            ))}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (m.type === 'findings') {
-    return (
-      <div className="chat-message">
-        <div className="avatar">AI</div>
-        <div className="bubble">
-          <strong>
-            {m.title} ({m.total}건)
-          </strong>
-          <ul className="mini-findings">
-            {m.findings.map((f, i) => (
-              <li key={i}>
-                [{f.source}] {f.type}
-                {f.line ? ` · ${f.line}줄` : ''}
-                {typeof f.confidence === 'number'
-                  ? ` · ${Math.round(f.confidence * 100)}%`
-                  : ''}
-              </li>
-            ))}
-          </ul>
-          {m.total > m.findings.length && (
-            <p style={{ marginTop: 8, fontSize: 12 }}>… 외 {m.total - m.findings.length}건</p>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  if (m.type === 'masked' || m.type === 'prompt') {
-    return (
-      <div className="chat-message">
-        <div className="avatar">AI</div>
-        <div className="bubble">
-          <strong>{m.title}</strong>
-          {m.note && <p>{m.note}</p>}
-          <pre className="code-output">{m.body}</pre>
-          <div className="message-actions">
-            <button type="button" className="msg-btn msg-btn--primary" onClick={m.onCopy}>
-              <Copy size={12} /> 복사
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (m.type === 'error') {
-    return (
-      <div className="chat-message risk-high">
-        <div className="avatar">!</div>
-        <div className="bubble">
-          <strong>{m.title}</strong>
-          <p>{m.body}</p>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className={`chat-message ${isUser ? 'user' : ''}`}>
-      <div className="avatar">{isUser ? '나' : 'AI'}</div>
-      <div className="bubble">
-        <strong>{m.title}</strong>
-        {m.preview && <pre className="user-preview">{m.preview}</pre>}
-        {m.tags?.length > 0 && (
-          <div className="message-tags">
-            {m.tags.map((t) => (
-              <span key={t}>{t}</span>
-            ))}
-          </div>
-        )}
-      </div>
     </div>
   )
 }
