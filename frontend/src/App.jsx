@@ -105,7 +105,7 @@ export default function App() {
     fetch('/api/health')
       .then((r) => r.json())
       .then(setHealth)
-      .catch(() => setHealth({ gemma_available: false }))
+      .catch(() => setHealth({ ollama_available: false, gemma_available: false }))
   }, [])
 
   useEffect(() => {
@@ -384,8 +384,10 @@ export default function App() {
 
   const healthLabel = health
     ? health.gemma_available
-      ? 'Gemma 연결됨 · API 정상'
-      : 'API 정상 · Gemma 오프라인'
+      ? '로컬 Gemma 연결됨 · API 정상'
+      : health.ollama_available
+        ? 'Ollama 연결됨 · Gemma 모델 없음'
+        : 'API 정상 · 로컬 Gemma 대기'
     : '연결 확인 중…'
 
   return (
@@ -405,7 +407,10 @@ export default function App() {
           </div>
         </div>
         <div className="topbar-actions">
-          <span className={`status-pill ${health?.gemma_available ? '' : 'status-pill--warn'}`}>
+          <span
+            className={`status-pill ${health?.gemma_available ? '' : 'status-pill--warn'}`}
+            title={health?.gemma_model ? `${health.gemma_model} @ ${health.ollama_base}` : undefined}
+          >
             {healthLabel}
           </span>
           {!panelOpen && lastResult && (

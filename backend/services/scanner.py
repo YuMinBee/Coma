@@ -105,7 +105,7 @@ def _recommendations(
     recs: list[str] = []
     if notebook:
         recs.append(
-            "노트북 입력 셀(source)만 검사했습니다. outputs·metadata는 수동으로 확인하세요."
+            "노트북 다운로드 파일은 입력 셀(source)을 마스킹하고 outputs·metadata를 제거합니다."
         )
     if risk_level == "높음":
         recs.append("외부 AI에 입력하기 전 반드시 민감정보를 제거해야 합니다.")
@@ -137,7 +137,7 @@ async def run_scan(
     rule_findings = scan_by_rules(text, filename)
     all_findings = _dedupe_findings(regex_findings + rule_findings)
 
-    gemma_available = await gemma_analyzer.check_ollama_available()
+    gemma_available = await gemma_analyzer.check_model_available() if use_gemma else False
     gemma_used = False
     gemma_level = "LOW"
     gemma_summary = ""

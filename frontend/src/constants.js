@@ -40,4 +40,4 @@ export const IMPORT_CONTEXTS = [
 ]
 
 export const MAX_FOLDER_FILES = 25
-export const MAX_FILE_BYTES = 512 * 1024
+export const MAX_FILE_BYTES = 1 * 1024 * 1024

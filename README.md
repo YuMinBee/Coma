@@ -10,10 +10,13 @@
 - **파일 업로드**: 허용 확장자는 `shared/allowed_extensions.json` 한 곳에서 관리 (프론트·백엔드 공통)
 - **검사 이력 (서버)**: SQLite 로컬 DB (`backend/data/safeprompt.db`)
 - **에이전트 UI**: 검사 이력·오른쪽 결과 패널·외부 반입 시나리오 5종
+- **네이티브 GUI 프로토타입**: 브라우저 없이 실행파일로 패키징 가능한 Tkinter 앱 (`desktop_native/`)
 
 ## 실행 방법
 
 ### 1. 백엔드 (FastAPI)
+
+> Python **3.10 이상**이 필요합니다. (`int | None` 타입 문법 사용, Docker 이미지는 Python 3.12)
 
 ```bash
 cd backend
@@ -67,13 +70,24 @@ chmod +x scripts/*.sh
 - API 직접: **http://localhost:8001**
 - 검사 로그 DB: Docker volume `safeprompt-data` (`/data/safeprompt.db`)
 
+**오프라인 번들 (이미지 tar 포함, pull 없음)**
+
+```bash
+# 인터넷 가능한 PC에서 번들 생성
+./scripts/export-offline-bundle.sh
+
+# 심사 PC에서는 release/safepromptguard-v3 폴더를 받아 실행
+./scripts/start-offline.sh      # Linux / macOS
+scripts\start-offline.bat       # Windows
+```
+
 | 문서 | 대상 |
 |------|------|
 | [docs/INSTALL_DOCKER.md](docs/INSTALL_DOCKER.md) | 심사위원 설치·실행 |
 | [docs/PUBLISH_GHCR.md](docs/PUBLISH_GHCR.md) | 팀 GHCR 빌드·push |
 
 호스트 PC에서 Ollama를 쓰려면 기본값 `OLLAMA_BASE=http://host.docker.internal:11434` 를 사용합니다.  
-Ollama 없이도 정규식·규칙 탐지는 동작합니다.
+Ollama 없이도 정규식·규칙 탐지는 동작합니다. Linux Docker 환경에서 `Ollama 연결됨 · Gemma 모델 없음` 으로 보이면 Ollama 실행 사용자/모델 저장 경로가 다른 상태일 수 있으니 [Docker 설치 가이드의 Ollama 섹션](docs/INSTALL_DOCKER.md#5-선택-gemma--ollama)을 확인하세요.
 
 환경 변수 예시 (`.env` 또는 `.env.prod`):
 
@@ -81,6 +95,23 @@ Ollama 없이도 정규식·규칙 탐지는 동작합니다.
 OLLAMA_BASE=http://host.docker.internal:11434
 GEMMA_MODEL=gemma2:2b
 ```
+
+### 5. 네이티브 GUI 프로토타입
+
+브라우저나 Electron 없이 로컬 실행파일로 패키징 가능한 GUI입니다. 기존 백엔드 스캐너를 직접 호출하고, 로컬 Ollama의 `gemma2:2b` 상태를 표시합니다.
+
+```bash
+python desktop_native/safeprompt_gui.py
+```
+
+실행파일 빌드:
+
+```bash
+./scripts/build-gui-exe.sh      # Linux / macOS
+scripts\build-gui-exe.bat       # Windows
+```
+
+자세한 내용: [docs/DESKTOP_NATIVE_GUI.md](docs/DESKTOP_NATIVE_GUI.md)
 
 ## 검사 로그 (SQLite)
 
@@ -104,8 +135,8 @@ GEMMA_MODEL=gemma2:2b
 | 항목 | 기준 |
 |------|------|
 | 응답 시간 | 구간별 **평균 5,000ms 이하** 권장 |
-| 입력 크기 | API 상한 **최대 500,000자** (약 0.48MB) — 과제 「1MB」는 이 상한 기준으로 측정 |
-| 측정 대상 | `run_scan()` 전체 (정규식 → 규칙 → 선택 Gemma → 마스킹 → 안전 프롬프트) |
+| 입력 크기 | API 상한 **최대 1,048,576자** (약 1MiB) |
+| 측정 대상 | `run_scan()` 전체 (정규식 → 규칙 → 선택 Gemma → 마스킹 → 안전 프롬프트), HTTP 업로드 오버헤드 제외 |
 
 ### 사전 준비
 
@@ -230,10 +261,17 @@ curl http://localhost:8001/api/logs?limit=20
 │       └── benchmark_scan.py   # 성능 측정 스크립트
 ├── docker-compose.yml          # 로컬 빌드
 ├── docker-compose.prod.yml     # GHCR pull (심사용)
+├── docker-compose.offline.yml  # 사전 load 이미지 실행 (오프라인)
+├── desktop_native/
+│   ├── safeprompt_gui.py       # 네이티브 GUI 프로토타입
+│   └── requirements-build.txt
 ├── .env.prod.example
 ├── scripts/
 │   ├── install-docker.bat / .sh
 │   ├── start-judge.bat / .sh
+│   ├── start-offline.bat / .sh
+│   ├── export-offline-bundle.sh
+│   ├── build-gui-exe.bat / .sh
 │   └── publish-ghcr.ps1        # 팀 이미지 push
 ├── docs/
 │   ├── INSTALL_DOCKER.md       # 심사위원 가이드

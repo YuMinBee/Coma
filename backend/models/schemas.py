@@ -1,9 +1,11 @@
 from pydantic import BaseModel, Field
 from typing import Literal
 
+from constants import MAX_TEXT_CHARS
+
 
 class ScanRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=500_000)
+    text: str = Field(..., min_length=1, max_length=MAX_TEXT_CHARS)
     use_gemma: bool = True
 
 

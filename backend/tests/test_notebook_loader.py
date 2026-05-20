@@ -62,7 +62,7 @@ def test_enrich_findings_cell_index():
     assert aws.cell_type == "code"
 
 
-def test_masked_notebook_preserves_structure_and_tail():
+def test_masked_notebook_masks_source_and_strips_outputs_metadata():
     raw = json.dumps(_sample_nb())
     scan_text, nb, segments = prepare_notebook_scan(raw)
     findings = coalesce_span_findings(scan_by_regex(scan_text))
@@ -72,11 +72,16 @@ def test_masked_notebook_preserves_structure_and_tail():
     source = "".join(masked_nb["cells"][0]["source"])
     assert "AKIA" not in source
     assert "[MASKED" in source
-    assert masked_nb["cells"][0]["outputs"][0]["text"][0] == "password=leaked-in-output\n"
+    assert masked_nb["metadata"] == {}
+    assert masked_nb["cells"][0]["metadata"] == {}
+    assert masked_nb["cells"][0]["outputs"] == []
+    assert masked_nb["cells"][0]["execution_count"] is None
+    assert "leaked-in-output" not in masked_json
+    assert "sk-should-not-scan-metadata" not in masked_json
 
 
 if __name__ == "__main__":
     test_scan_text_excludes_outputs_and_metadata()
     test_enrich_findings_cell_index()
-    test_masked_notebook_preserves_structure_and_tail()
+    test_masked_notebook_masks_source_and_strips_outputs_metadata()
     print("all notebook tests passed")

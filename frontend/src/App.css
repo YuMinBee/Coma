@@ -147,6 +147,7 @@
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -630,7 +631,8 @@
 
 .sample-select {
   height: 32px;
-  max-width: 140px;
+  max-width: 190px;
+  min-width: 132px;
   padding: 0 8px;
   border-radius: 999px;
   border: 1px solid var(--border);
@@ -1027,8 +1029,19 @@
 @media (max-width: 720px) {
   .topbar { padding: 10px 12px; height: auto; min-height: 56px; flex-wrap: wrap; }
   .status-pill { display: none; }
+  .context-bar { padding: 8px 12px; }
+  .context-chip {
+    max-width: 168px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .session-sidebar { display: none; }
   .chat-stream { padding: 16px 12px; }
+  .left-actions { flex: 1 1 100%; }
+  .sample-select {
+    flex: 1 1 160px;
+    max-width: none;
+  }
   .chat-message, .chat-message.user {
     grid-template-columns: 30px minmax(0, 1fr);
     justify-content: stretch;

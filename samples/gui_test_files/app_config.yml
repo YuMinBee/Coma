@@ -1,0 +1,10 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://billing-db.company.internal:5432/customer
+    username: admin
+    password: "ProdPass123!"
+
+service:
+  env: production
+  internal_ip: 10.10.24.15
+  owner_email: security.owner@example.com

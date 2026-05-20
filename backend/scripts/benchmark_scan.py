@@ -19,11 +19,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from constants import MAX_TEXT_CHARS
 from services import gemma_analyzer
 from services.scanner import run_scan
 
-API_MAX_CHARS = 500_000
-TARGET_1MB_CHARS = 1_048_576
+API_MAX_CHARS = MAX_TEXT_CHARS
+TARGET_1MB_CHARS = MAX_TEXT_CHARS
 
 SAMPLE_BLOCK = """\
 spring.datasource.url=jdbc:mysql://prod-db.company.internal:3306/payment
@@ -32,6 +33,16 @@ AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
 Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhbGciOiJIUzI1NiJ9.sig
 customer_payment table timeout in production
 """
+FILLER_BLOCK = """\
+서비스 장애 재현 절차와 로그 일부를 외부 AI에 공유하기 전 점검합니다.
+민감하지 않은 설명 문장과 일반 코드 조각을 함께 포함해 실제 문서 입력에 가깝게 만듭니다.
+def sanitize_prompt(payload):
+    return payload.strip()
+"""
+
+
+def make_sample_block() -> str:
+    return SAMPLE_BLOCK + (FILLER_BLOCK * 20)
 
 
 def make_payload(char_count: int) -> str:
@@ -39,9 +50,10 @@ def make_payload(char_count: int) -> str:
         return ""
     parts: list[str] = []
     total = 0
+    block = make_sample_block()
     while total < char_count:
-        parts.append(SAMPLE_BLOCK)
-        total += len(SAMPLE_BLOCK)
+        parts.append(block)
+        total += len(block)
     return "".join(parts)[:char_count]
 
 
@@ -71,7 +83,7 @@ class BenchResult:
 
 async def bench_one(char_count: int, use_gemma: bool, iterations: int) -> BenchResult:
     text = make_payload(char_count)
-    gemma_available = await gemma_analyzer.check_ollama_available()
+    gemma_available = await gemma_analyzer.check_model_available() if use_gemma else False
     times_ms: list[int] = []
     last = None
 
@@ -114,12 +126,17 @@ def format_table(results: list[BenchResult], goal_ms: int = 5000) -> str:
 
 def build_report(results: list[BenchResult], meta: dict) -> str:
     table = format_table(results)
+    gemma_method = (
+        "- Gemma 생략: `--regex-only` 모드"
+        if meta.get("mode") == "regex-only"
+        else f"- Gemma ON: **{GEMMA_BENCH_MAX_CHARS:,}자 이하**만 (대용량은 정규식+규칙만 측정)"
+    )
     return f"""# SafePrompt Guard — 성능 측정 결과
 
 > 자동 생성: {meta['generated_at']}  
 > 환경: {meta['platform']} · Python {meta['python']}  
 > Gemma: {'연결됨 (' + meta['gemma_model'] + ')' if meta['gemma_available'] else '미연결 (정규식+규칙만)'}  
-> API 입력 상한: **{API_MAX_CHARS:,}자** (약 {API_MAX_CHARS / 1024 / 1024:.2f}MB) — 과제 「1MB」는 이 상한 기준으로 측정
+> API 입력 상한: **{API_MAX_CHARS:,}자** (약 {API_MAX_CHARS / 1024 / 1024:.2f}MiB)
 
 ## 목표 (과제 정량 지표)
 
@@ -128,10 +145,10 @@ def build_report(results: list[BenchResult], meta: dict) -> str:
 
 ## 측정 방법
 
-- `run_scan()` 직접 호출 (HTTP 오버헤드 제외)
-- 샘플: 설정·API Key·JWT·DB URL 등이 반복 포함된 합성 텍스트
+- `run_scan()` 직접 호출 (HTTP 업로드·네트워크 오버헤드 제외)
+- 샘플: 일반 설명 문장에 설정·API Key·JWT·DB URL을 섞은 합성 텍스트
 - 각 크기·모드별 **{meta['iterations']}회** 반복 후 평균/최소/최대(ms)
-- Gemma ON: **{GEMMA_BENCH_MAX_CHARS:,}자 이하**만 (대용량은 정규식+규칙만 측정)
+{gemma_method}
 
 ## 결과
 
@@ -158,7 +175,11 @@ GEMMA_BENCH_MAX_CHARS = 100_000
 async def run_benchmarks(sizes: list[int], iterations: int) -> tuple[list[BenchResult], dict]:
     import platform
 
-    gemma_available = await gemma_analyzer.check_ollama_available()
+    gemma_available = (
+        await gemma_analyzer.check_model_available()
+        if GEMMA_BENCH_MAX_CHARS > 0
+        else False
+    )
     all_results: list[BenchResult] = []
 
     for size in sizes:
@@ -197,6 +218,7 @@ async def run_benchmarks(sizes: list[int], iterations: int) -> tuple[list[BenchR
         "gemma_available": gemma_available,
         "gemma_model": gemma_analyzer.DEFAULT_MODEL,
         "iterations": iterations,
+        "mode": "regex-only" if GEMMA_BENCH_MAX_CHARS == 0 else "default",
         "summary": "\n".join(summary_lines),
     }
     return all_results, meta
@@ -208,7 +230,7 @@ def parse_sizes(raw: str) -> list[int]:
 
 
 def default_sizes() -> list[int]:
-    return [10_000, 50_000, 100_000, 500_000]
+    return [10_000, 50_000, 100_000, 500_000, TARGET_1MB_CHARS]
 
 
 async def main() -> None:
@@ -245,7 +267,7 @@ async def main() -> None:
     if args.gemma_only:
         sizes = [s for s in sizes if s <= GEMMA_BENCH_MAX_CHARS]
         results = []
-        gemma_available = await gemma_analyzer.check_ollama_available()
+        gemma_available = await gemma_analyzer.check_model_available()
         for size in sizes:
             results.append(await bench_one(size, use_gemma=True, iterations=args.iterations))
         import platform
@@ -257,6 +279,7 @@ async def main() -> None:
             "gemma_available": gemma_available,
             "gemma_model": gemma_analyzer.DEFAULT_MODEL,
             "iterations": args.iterations,
+            "mode": "gemma-only",
             "summary": "- Gemma ON 전용 측정",
         }
     else:

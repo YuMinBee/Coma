@@ -53,7 +53,7 @@ export default function ArtifactPanel({
           <>
             {result.source_kind === 'notebook' && (
               <p className="artifact-note">
-                입력 셀(source)만 검사·마스킹했습니다. outputs·metadata는 직접 확인하세요.
+                입력 셀(source)을 검사·마스킹하고 다운로드 파일에서는 outputs·metadata를 제거합니다.
               </p>
             )}
             <pre className="artifact-code">{masked || '(내용 없음)'}</pre>

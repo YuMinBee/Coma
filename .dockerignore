@@ -3,6 +3,7 @@
 .github/
 **/.venv/
 **/venv/
+**/venv*/
 **/node_modules/
 **/dist/
 **/__pycache__/

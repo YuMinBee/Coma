@@ -1,0 +1,15 @@
+import os
+
+API_KEY = "AKIAIOSFODNN7EXAMPLE"
+DATABASE_URL = "jdbc:mysql://prod-db.company.internal:3306/payment"
+password = "Qwer1234!"
+
+
+def calculate_internal_discount(customer_tier, contract_amount):
+    # VIP 고객 계약 단가와 내부 추천 로직이 섞인 샘플
+    if customer_tier == "vip" and contract_amount > 10000000:
+        return 0.17
+    return 0.03
+
+
+print("customer payment job uses", DATABASE_URL)

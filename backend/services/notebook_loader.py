@@ -1,4 +1,4 @@
-"""Jupyter .ipynb — 입력 셀 source만 추출·검사·마스킹 (outputs/metadata 제외)."""
+"""Jupyter .ipynb — 입력 셀 source 검사·마스킹, outputs/metadata 제거."""
 
 from __future__ import annotations
 
@@ -206,9 +206,17 @@ def _findings_for_cell_source(
 
 def build_masked_notebook(nb: dict, segments: list[CellSegment], findings: list[Finding]) -> str:
     nb_out = copy.deepcopy(nb)
+    nb_out["metadata"] = {}
     for seg in segments:
         cell_findings = _findings_for_cell_source(findings, seg)
         masked_source = apply_masking(seg.source, cell_findings)
         cell = nb_out["cells"][seg.cell_index]
         _write_cell_source(cell, masked_source, seg.source_was_list)
+    for cell in nb_out.get("cells", []):
+        if not isinstance(cell, dict):
+            continue
+        cell["metadata"] = {}
+        if cell.get("cell_type") == "code":
+            cell["outputs"] = []
+            cell["execution_count"] = None
     return json.dumps(nb_out, ensure_ascii=False, indent=1)

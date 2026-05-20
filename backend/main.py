@@ -13,7 +13,12 @@ from services.scanner import run_scan
 from services import gemma_analyzer
 from services import audit_log
 from services.notebook_loader import NotebookParseError, prepare_notebook_scan
-from constants import ALLOWED_EXTENSIONS, NOTEBOOK_EXTENSIONS, get_file_upload_policy
+from constants import (
+    ALLOWED_EXTENSIONS,
+    MAX_UPLOAD_BYTES,
+    NOTEBOOK_EXTENSIONS,
+    get_file_upload_policy,
+)
 
 
 @asynccontextmanager
@@ -50,13 +55,15 @@ async def app_config():
 
 @app.get("/api/health")
 async def health():
-    gemma_ok = await gemma_analyzer.check_ollama_available()
+    gemma_status = await gemma_analyzer.local_gemma_status()
     policy = get_file_upload_policy()
     return {
         "status": "ok",
         "service": "SafePrompt Guard",
-        "gemma_available": gemma_ok,
+        "ollama_available": gemma_status["ollama_available"],
+        "gemma_available": gemma_status["gemma_available"],
         "gemma_model": gemma_analyzer.DEFAULT_MODEL,
+        "ollama_base": gemma_analyzer.OLLAMA_BASE,
         "audit_db": str(audit_log.db_path()),
         "allowed_extensions": policy["extensions"],
     }
@@ -105,7 +112,12 @@ async def scan_file(
             ),
         )
 
-    raw = await file.read()
+    raw = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"파일은 최대 {MAX_UPLOAD_BYTES // 1024 // 1024}MB까지 업로드할 수 있습니다.",
+        )
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:

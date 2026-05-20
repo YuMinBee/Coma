@@ -59,31 +59,15 @@ def coalesce_span_findings(findings: list[Finding]) -> list[Finding]:
     span_findings = [
         f for f in findings if f.start is not None and f.end is not None and f.end > f.start
     ]
-    other = [f for f in findings if f not in span_findings]
+    span_ids = {id(f) for f in span_findings}
+    other = [f for f in findings if id(f) not in span_ids]
     if not span_findings:
         return findings
 
-    # 1) 완전 포함 관계: 바깥 span만 유지 (동일 구간이면 우선순위 높은 타입 유지)
-    after_nested: list[Finding] = []
-    for f in span_findings:
-        drop = False
-        for g in span_findings:
-            if f is g:
-                continue
-            if f.start >= g.start and f.end <= g.end:
-                if f.start > g.start or f.end < g.end:
-                    drop = True
-                    break
-                if _mask_rank(g) > _mask_rank(f):
-                    drop = True
-                    break
-        if not drop:
-            after_nested.append(f)
-
-    # 2) 부분 겹침: 구간 합집합으로 병합
-    after_nested.sort(key=lambda f: (f.start, f.end))
+    # 부분 겹침과 완전 포함을 한 번의 정렬 패스로 병합한다.
+    span_findings.sort(key=lambda f: (f.start, f.end))
     merged: list[Finding] = []
-    for f in after_nested:
+    for f in span_findings:
         if merged and f.start < merged[-1].end:
             last = merged[-1]
             winner = _pick_span_winner(last, f)
@@ -97,14 +81,27 @@ def coalesce_span_findings(findings: list[Finding]) -> list[Finding]:
 
 
 def mask_by_spans(text: str, findings: list[Finding]) -> str:
-    span_findings = [f for f in findings if f.start is not None and f.end is not None]
-    span_findings.sort(key=lambda x: x.start, reverse=True)
+    span_findings = sorted(
+        (
+            f
+            for f in findings
+            if f.start is not None and f.end is not None and 0 <= f.start < f.end <= len(text)
+        ),
+        key=lambda x: x.start,
+    )
+    if not span_findings:
+        return text
 
-    result = text
+    parts: list[str] = []
+    cursor = 0
     for f in span_findings:
-        ph = _placeholder(f)
-        result = result[: f.start] + ph + result[f.end :]
-    return result
+        if f.start < cursor:
+            continue
+        parts.append(text[cursor : f.start])
+        parts.append(_placeholder(f))
+        cursor = f.end
+    parts.append(text[cursor:])
+    return "".join(parts)
 
 
 def mask_by_lines(text: str, findings: list[Finding]) -> str:

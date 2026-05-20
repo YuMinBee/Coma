@@ -122,13 +122,50 @@ Detected risk summary:
 """
 
 
-async def check_ollama_available() -> bool:
+async def fetch_ollama_tags() -> dict[str, Any] | None:
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
             r = await client.get(f"{OLLAMA_BASE}/api/tags")
-            return r.status_code == 200
+            if r.status_code != 200:
+                return None
+            data = r.json()
+            return data if isinstance(data, dict) else None
     except Exception:
+        return None
+
+
+def _tag_has_model(tag: dict[str, Any], model: str) -> bool:
+    target = model.lower()
+    for key in ("name", "model"):
+        value = str(tag.get(key, "")).lower()
+        if value == target:
+            return True
+    return False
+
+
+async def check_ollama_available() -> bool:
+    return await fetch_ollama_tags() is not None
+
+
+async def check_model_available(model: str = DEFAULT_MODEL) -> bool:
+    data = await fetch_ollama_tags()
+    if not data:
         return False
+    models = data.get("models", [])
+    if not isinstance(models, list):
+        return False
+    return any(isinstance(item, dict) and _tag_has_model(item, model) for item in models)
+
+
+async def local_gemma_status(model: str = DEFAULT_MODEL) -> dict[str, bool]:
+    data = await fetch_ollama_tags()
+    if not data:
+        return {"ollama_available": False, "gemma_available": False}
+    models = data.get("models", [])
+    gemma_available = isinstance(models, list) and any(
+        isinstance(item, dict) and _tag_has_model(item, model) for item in models
+    )
+    return {"ollama_available": True, "gemma_available": gemma_available}
 
 
 async def _ollama_generate(
