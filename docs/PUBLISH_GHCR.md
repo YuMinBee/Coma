@@ -20,8 +20,8 @@ docker login ghcr.io -u YOUR_GITHUB_USERNAME
 기본 예시 (조직 `BuildGuardAI`):
 
 ```text
-ghcr.io/buildguardai/safeprompt-guard-backend:latest
-ghcr.io/buildguardai/safeprompt-guard-frontend:latest
+ghcr.io/buildguardai/safeprompt-guard-v3-backend:latest
+ghcr.io/buildguardai/safeprompt-guard-v3-frontend:latest
 ```
 
 > GHCR 이름은 **소문자**입니다. `BuildGuardAI` → `buildguardai`
@@ -61,11 +61,11 @@ cd /path/to/SafePromptGuard   # repo 루트
 export OWNER=buildguardai
 export TAG=latest
 
-docker build -f backend/Dockerfile -t ghcr.io/${OWNER}/safeprompt-guard-backend:${TAG} .
-docker build -f frontend/Dockerfile -t ghcr.io/${OWNER}/safeprompt-guard-frontend:${TAG} .
+docker build -f backend/Dockerfile -t ghcr.io/${OWNER}/safeprompt-guard-v3-backend:${TAG} .
+docker build -f frontend/Dockerfile -t ghcr.io/${OWNER}/safeprompt-guard-v3-frontend:${TAG} .
 
-docker push ghcr.io/${OWNER}/safeprompt-guard-backend:${TAG}
-docker push ghcr.io/${OWNER}/safeprompt-guard-frontend:${TAG}
+docker push ghcr.io/${OWNER}/safeprompt-guard-v3-backend:${TAG}
+docker push ghcr.io/${OWNER}/safeprompt-guard-v3-frontend:${TAG}
 ```
 
 ---

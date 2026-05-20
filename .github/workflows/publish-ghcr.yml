@@ -39,8 +39,8 @@ jobs:
         run: |
           owner="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
           echo "OWNER=${owner}" >> "$GITHUB_ENV"
-          echo "BACKEND_IMAGE=ghcr.io/${owner}/safeprompt-guard-backend" >> "$GITHUB_ENV"
-          echo "FRONTEND_IMAGE=ghcr.io/${owner}/safeprompt-guard-frontend" >> "$GITHUB_ENV"
+          echo "BACKEND_IMAGE=ghcr.io/${owner}/safeprompt-guard-v3-backend" >> "$GITHUB_ENV"
+          echo "FRONTEND_IMAGE=ghcr.io/${owner}/safeprompt-guard-v3-frontend" >> "$GITHUB_ENV"
 
       - name: Set image tag
         id: meta

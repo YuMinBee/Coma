@@ -8,8 +8,8 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
-$backend = "ghcr.io/$Owner/safeprompt-guard-backend:$Tag"
-$frontend = "ghcr.io/$Owner/safeprompt-guard-frontend:$Tag"
+$backend = "ghcr.io/$Owner/safeprompt-guard-v3-backend:$Tag"
+$frontend = "ghcr.io/$Owner/safeprompt-guard-v3-frontend:$Tag"
 
 Write-Host "==> Build backend: $backend"
 docker build -f backend/Dockerfile -t $backend .
