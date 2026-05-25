@@ -25,7 +25,7 @@ SENSITIVE_FILES = {
 }
 
 TABLE_PATTERN = re.compile(
-    r"\b(?:tbl_|tb_|customer_|payment_|user_)[\w]+\b|"
+    r"\b(?:tbl_|tb_|customer_|payment_)[\w]+\b|"
     r"(?:고객|결제|주문|계약)[\s]*(?:테이블|table|Table)",
     re.IGNORECASE,
 )

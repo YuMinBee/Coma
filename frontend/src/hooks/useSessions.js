@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { IMPORT_CONTEXTS } from '../constants'
 
-const STORAGE_KEY = 'safeprompt-sessions-v1'
+const STORAGE_KEY = 'safeprompt-sessions-v2'
 
 function newSessionId() {
   return `s-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -10,13 +10,17 @@ function newSessionId() {
 function createSession(contextId, title = '새 검사') {
   return {
     id: newSessionId(),
-    contextId,
+    contextId: normalizeContextId(contextId),
     title,
     createdAt: Date.now(),
     messages: [],
     lastResult: null,
     panel: { open: false, tab: 'masked', expandedFindingIndices: [] },
   }
+}
+
+function normalizeContextId(contextId) {
+  return IMPORT_CONTEXTS.some((c) => c.id === contextId) ? contextId : 'share'
 }
 
 function normalizeSession(session) {
@@ -27,6 +31,7 @@ function normalizeSession(session) {
     (legacy !== null && legacy !== undefined ? [legacy] : [])
   return {
     ...session,
+    contextId: normalizeContextId(session.contextId),
     panel: {
       open: !!p.open,
       tab: p.tab || 'masked',
@@ -50,7 +55,8 @@ function loadStored() {
 }
 
 function contextLabel(id) {
-  return IMPORT_CONTEXTS.find((c) => c.id === id)?.label || id
+  const normalized = normalizeContextId(id)
+  return IMPORT_CONTEXTS.find((c) => c.id === normalized)?.label || normalized
 }
 
 export function useSessions(initialContextId = 'ai') {

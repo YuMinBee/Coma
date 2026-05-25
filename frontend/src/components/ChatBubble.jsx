@@ -53,6 +53,28 @@ export default function ChatBubble({
     )
   }
 
+  if (m.type === 'analysis') {
+    return (
+      <div className="chat-message">
+        <div className="avatar">AI</div>
+        <div className="bubble bubble--wide analysis-bubble">
+          <strong>{m.title}</strong>
+          <ol className="analysis-steps">
+            {m.steps?.map((step, i) => (
+              <li key={`${step.title}-${i}`}>
+                <span className="analysis-step-index">{i + 1}</span>
+                <div>
+                  <b>{step.title}</b>
+                  <p>{step.body}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+    )
+  }
+
   if (m.type === 'findings') {
     return (
       <div className="chat-message">

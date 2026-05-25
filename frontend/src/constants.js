@@ -5,11 +5,11 @@ export const ALLOWED_FILE_EXTENSIONS = fileUploadPolicy.extensions
 export const ACCEPT_FILE_TYPES = fileUploadPolicy.extensions.join(',')
 export const NOTEBOOK_EXTENSIONS = new Set(fileUploadPolicy.notebook_extensions || ['.ipynb'])
 
-/** 외부 반입 시나리오 — UI 라벨 (검사 로직은 동일) */
+/** 외부 공유 시나리오 — UI 라벨 (검사 로직은 동일) */
 export const IMPORT_CONTEXTS = [
   {
     id: 'ai',
-    label: '외부 AI 질문',
+    label: '외부 AI 공유',
     hint: 'ChatGPT, Gemini, Copilot 등에 붙여넣기 전',
     icon: '🤖',
   },
@@ -33,8 +33,8 @@ export const IMPORT_CONTEXTS = [
   },
   {
     id: 'other',
-    label: '기타 외부 반입',
-    hint: '외부 업체·클라우드·API 연동 등',
+    label: '기타 외부 공유',
+    hint: '외부 업체·클라우드·API 연동 전',
     icon: '↗',
   },
 ]

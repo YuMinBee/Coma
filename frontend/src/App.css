@@ -470,6 +470,55 @@
 .risk-score-line.medium { color: var(--warning); }
 .risk-score-line.low { color: var(--success); }
 
+.analysis-bubble {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+
+.analysis-steps {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.analysis-steps li {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.analysis-step-index {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent-glow);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.analysis-steps b {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.analysis-steps p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
 .mini-findings {
   list-style: none;
   margin: 10px 0 0;

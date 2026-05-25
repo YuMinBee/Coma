@@ -19,6 +19,8 @@ export default function ArtifactPanel({
 
   const masked = result.masked_text || ''
   const prompt = result.safe_prompt || ''
+  const tabs = ARTIFACT_TABS.filter((t) => t.id !== 'prompt' || prompt.trim())
+  const activeTab = prompt.trim() || tab !== 'prompt' ? tab : 'masked'
 
   return (
     <aside className="artifact-panel" aria-label="검사 결과 상세">
@@ -36,11 +38,11 @@ export default function ArtifactPanel({
       </header>
 
       <nav className="artifact-tabs">
-        {ARTIFACT_TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
-            className={`artifact-tab ${tab === t.id ? 'artifact-tab--active' : ''}`}
+            className={`artifact-tab ${activeTab === t.id ? 'artifact-tab--active' : ''}`}
             onClick={() => onTabChange(t.id)}
           >
             {t.label}
@@ -49,7 +51,7 @@ export default function ArtifactPanel({
       </nav>
 
       <div className="artifact-body">
-        {tab === 'masked' && (
+        {activeTab === 'masked' && (
           <>
             {result.source_kind === 'notebook' && (
               <p className="artifact-note">
@@ -59,7 +61,7 @@ export default function ArtifactPanel({
             <pre className="artifact-code">{masked || '(내용 없음)'}</pre>
           </>
         )}
-        {tab === 'prompt' && (
+        {activeTab === 'prompt' && (
           <>
             {!result.gemma_used && (
               <p className="artifact-note">Gemma 미연결 — 규칙 기반 템플릿으로 생성됨</p>
@@ -67,7 +69,7 @@ export default function ArtifactPanel({
             <pre className="artifact-code artifact-code--prose">{prompt || '(내용 없음)'}</pre>
           </>
         )}
-        {tab === 'findings' && (
+        {activeTab === 'findings' && (
           <FindingAccordion
             findings={result.findings}
             expandedIndices={expandedFindingIndices}
@@ -83,7 +85,7 @@ export default function ArtifactPanel({
           activeTab={tab}
           onCopy={onCopy}
         />
-        {tab === 'masked' && (
+        {activeTab === 'masked' && (
           <button
             type="button"
             className="msg-btn"
@@ -92,7 +94,7 @@ export default function ArtifactPanel({
             <Copy size={14} /> 복사
           </button>
         )}
-        {tab === 'prompt' && (
+        {activeTab === 'prompt' && (
           <button
             type="button"
             className="msg-btn msg-btn--primary"
@@ -101,7 +103,7 @@ export default function ArtifactPanel({
             <Copy size={14} /> 복사
           </button>
         )}
-        {tab === 'masked' && (
+        {activeTab === 'masked' && (
           <button
             type="button"
             className="msg-btn"
@@ -110,7 +112,7 @@ export default function ArtifactPanel({
             <Download size={14} /> 저장
           </button>
         )}
-        {tab === 'masked' && result.masked_notebook_json && (
+        {activeTab === 'masked' && result.masked_notebook_json && (
           <button
             type="button"
             className="msg-btn msg-btn--primary"

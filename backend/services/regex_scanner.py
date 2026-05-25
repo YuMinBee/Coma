@@ -51,6 +51,68 @@ def _short(value: str, limit: int = 160) -> str:
     return value[:limit] + ("..." if len(value) > limit else "")
 
 
+def _line_text_for_pos(text: str, pos: int) -> str:
+    start = text.rfind("\n", 0, pos) + 1
+    end = text.find("\n", pos)
+    if end == -1:
+        end = len(text)
+    return text[start:end]
+
+
+def _assignment_value(quote: str) -> str:
+    delimiter_pos = -1
+    for delimiter in (":", "="):
+        pos = quote.find(delimiter)
+        if pos != -1 and (delimiter_pos == -1 or pos < delimiter_pos):
+            delimiter_pos = pos
+
+    if delimiter_pos == -1:
+        return ""
+
+    return quote[delimiter_pos + 1 :].strip().strip("'\"` ,;):")
+
+
+def _looks_like_reference(value: str) -> bool:
+    lower = value.lower()
+    return lower.startswith(
+        (
+            "os.getenv(",
+            "getenv(",
+            "process.env",
+            "settings.",
+            "config.",
+            "env.",
+            "environ.",
+        )
+    )
+
+
+def _looks_like_type_hint(value: str, line: str) -> bool:
+    clean = value.lower().strip().strip("[]|,")
+    if clean in {"str", "string", "int", "float", "bool", "bytes", "dict", "list", "none", "null"}:
+        return True
+    return "def " in line and ":" in line and "=" not in line
+
+
+def _should_skip_secret_match(name: str, text: str, match: re.Match[str]) -> bool:
+    if name not in {"Password", "API Key"}:
+        return False
+
+    quote = match.group()
+    line = _line_text_for_pos(text, match.start())
+    value = _assignment_value(quote)
+    if not value:
+        return True
+
+    if _looks_like_reference(value):
+        return True
+
+    if _looks_like_type_hint(value, line):
+        return True
+
+    return False
+
+
 def _iter_internal_domains(text: str) -> list[tuple[int, int, str]]:
     lower = text.lower()
     matches: list[tuple[int, int, str]] = []
@@ -113,6 +175,9 @@ def scan_by_regex(text: str) -> list[Finding]:
         if not _may_contain_pattern(name, text, lower):
             continue
         for match in pattern.finditer(text):
+            if _should_skip_secret_match(name, text, match):
+                continue
+
             quote = match.group()
             span = (match.start(), match.end())
             if span in seen_spans:

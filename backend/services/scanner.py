@@ -164,7 +164,9 @@ async def run_scan(
         masked_notebook_json = build_masked_notebook(nb, segments, all_findings)
 
     safe_prompt: str
-    if gemma_used:
+    if not all_findings:
+        safe_prompt = ""
+    elif gemma_used:
         generated = await gemma_analyzer.generate_safe_prompt(masked_text, gemma_summary)
         safe_prompt = generated or gemma_analyzer.fallback_safe_prompt(masked_text, all_findings)
     else:

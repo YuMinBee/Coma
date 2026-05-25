@@ -17,6 +17,9 @@ def test_shared_json_matches_backend():
     assert policy["accept_attribute"] == ",".join(data["extensions"])
     assert ".ipynb" in ALLOWED_EXTENSIONS
     assert ".python" in ALLOWED_EXTENSIONS
+    assert ".c" in ALLOWED_EXTENSIONS
+    assert ".cpp" in ALLOWED_EXTENSIONS
+    assert ".sql" in ALLOWED_EXTENSIONS
 
 
 if __name__ == "__main__":

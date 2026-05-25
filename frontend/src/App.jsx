@@ -25,6 +25,12 @@ import ChatBubble from './components/ChatBubble'
 
 let msgId = 0
 const nextId = () => `m-${++msgId}`
+const INITIAL_SCAN_STEP = '1차: 정규식 탐지 중…'
+const SCAN_PROGRESS_STEPS = [
+  '2차: 규칙 탐지 중…',
+  '3차: Gemma 문맥 분석 중…',
+  '마스킹 및 안전 프롬프트 생성 중…',
+]
 
 function riskClass(level) {
   if (level === '높음') return 'high'
@@ -55,6 +61,53 @@ async function mergeFiles(files) {
 
 function previewLines(text, maxLines = 8) {
   return text.split('\n').slice(0, maxLines).join('\n')
+}
+
+function countFindingsBySource(findings = []) {
+  return findings.reduce(
+    (acc, finding) => {
+      acc[finding.source] = (acc[finding.source] || 0) + 1
+      return acc
+    },
+    { regex: 0, rule: 0, gemma: 0 },
+  )
+}
+
+function buildAnalysisSteps(data, hasSafePrompt) {
+  const counts = countFindingsBySource(data.findings || [])
+  return [
+    {
+      title: '1차 정규식 검사',
+      body:
+        counts.regex > 0
+          ? `토큰, 비밀번호, URL, 개인정보처럼 명확한 패턴 ${counts.regex}건을 확인했습니다.`
+          : '명확한 비밀값·개인정보 패턴은 발견되지 않았습니다.',
+    },
+    {
+      title: '2차 규칙 검사',
+      body:
+        counts.rule > 0
+          ? `파일명, 키워드, 테이블명 등 규칙 기반 후보 ${counts.rule}건을 확인했습니다.`
+          : '규칙 기반 후보는 발견되지 않았습니다.',
+    },
+    {
+      title: '3차 Gemma 문맥 검사',
+      body: data.gemma_used
+        ? counts.gemma > 0
+          ? `정규식으로 잡기 어려운 문맥 위험 ${counts.gemma}건을 추가로 확인했습니다.`
+          : '문맥상 추가 유출 후보는 발견되지 않았습니다.'
+        : 'Gemma를 사용하지 못해 정규식·규칙 기반으로만 판단했습니다.',
+    },
+    {
+      title: '마스킹 및 결과 생성',
+      body:
+        data.findings?.length > 0
+          ? hasSafePrompt
+            ? '탐지된 항목을 마스킹하고 외부 공유용 안전 프롬프트를 생성했습니다.'
+            : '탐지된 항목을 마스킹했습니다.'
+          : '탐지 0건이라 안전 프롬프트는 생성하지 않았습니다.',
+    },
+  ]
 }
 
 export default function App() {
@@ -143,14 +196,12 @@ export default function App() {
     patchActive({ panel: { ...panel, open: false } })
   }
 
-  const pushMessage = (msg) => {
-    patchActive({ messages: [...messages, { id: nextId(), ...msg }] })
-  }
-
   const applyScanResult = (data, titlePatch = {}) => {
     const rc = riskClass(data.risk_level)
     patchActive((session) => {
       const base = session.messages.filter((m) => m.type !== 'loading')
+      const hasSafePrompt = Boolean(data.safe_prompt?.trim())
+      const analysisSteps = buildAnalysisSteps(data, hasSafePrompt)
       const newMessages = [
         ...base,
         {
@@ -168,6 +219,13 @@ export default function App() {
           ],
           recommendations: data.recommendations,
         },
+        {
+          id: nextId(),
+          role: 'assistant',
+          type: 'analysis',
+          title: '검사 과정',
+          steps: analysisSteps,
+        },
       ]
       if (data.findings.length > 0) {
         newMessages.push({
@@ -182,8 +240,8 @@ export default function App() {
 
       const promptTitle =
         session.contextId === 'ai'
-          ? '안전 프롬프트 (외부 AI용)'
-          : '외부 반입용 안전 텍스트'
+          ? '외부 AI 공유용 안전 프롬프트'
+          : '외부 공유용 안전 텍스트'
 
       newMessages.push({
         id: nextId(),
@@ -193,14 +251,16 @@ export default function App() {
         body: data.masked_text,
       })
 
-      newMessages.push({
-        id: nextId(),
-        role: 'assistant',
-        type: 'prompt',
-        title: promptTitle,
-        body: data.safe_prompt,
-        note: !data.gemma_used ? 'Gemma 미연결 — 규칙 기반 템플릿으로 생성됨' : null,
-      })
+      if (hasSafePrompt) {
+        newMessages.push({
+          id: nextId(),
+          role: 'assistant',
+          type: 'prompt',
+          title: promptTitle,
+          body: data.safe_prompt,
+          note: !data.gemma_used ? 'Gemma 미연결 — 규칙 기반 템플릿으로 생성됨' : null,
+        })
+      }
 
       return {
         ...titlePatch,
@@ -208,7 +268,7 @@ export default function App() {
         lastResult: data,
         panel: {
           open: true,
-          tab: defaultArtifactTab(session.contextId),
+          tab: hasSafePrompt ? defaultArtifactTab(session.contextId) : 'masked',
           expandedFindingIndices: [],
         },
       }
@@ -236,15 +296,14 @@ export default function App() {
       messages: [
         ...messages,
         userMsg,
-        { id: agentId, role: 'assistant', type: 'loading', title: '보안 에이전트', step: '1차: 정규식 탐지 중…' },
+        { id: agentId, role: 'assistant', type: 'loading', title: '보안 에이전트', step: INITIAL_SCAN_STEP },
       ],
     })
 
-    const steps = ['2차: 규칙 탐지 중…', '3차: Gemma 문맥 분석 중…', '마스킹 및 안전 프롬프트 생성 중…']
     let stepIdx = 0
     const timer = setInterval(() => {
-      if (stepIdx < steps.length) {
-        const step = steps[stepIdx++]
+      if (stepIdx < SCAN_PROGRESS_STEPS.length) {
+        const step = SCAN_PROGRESS_STEPS[stepIdx++]
         patchActive((session) => ({
           messages: session.messages.map((m) => (m.id === agentId ? { ...m, step } : m)),
         }))
@@ -278,12 +337,32 @@ export default function App() {
   const runScanFile = async (file) => {
     setLoading(true)
     setError(null)
-    pushMessage({
+    const userMsg = {
+      id: nextId(),
       role: 'user',
       title: '파일 업로드',
       preview: file.name,
       tags: [activeContext.label, file.name],
+    }
+    const agentId = nextId()
+    patchActive({
+      messages: [
+        ...messages,
+        userMsg,
+        { id: agentId, role: 'assistant', type: 'loading', title: '보안 에이전트', step: INITIAL_SCAN_STEP },
+      ],
     })
+
+    let stepIdx = 0
+    const timer = setInterval(() => {
+      if (stepIdx < SCAN_PROGRESS_STEPS.length) {
+        const step = SCAN_PROGRESS_STEPS[stepIdx++]
+        patchActive((session) => ({
+          messages: session.messages.map((m) => (m.id === agentId ? { ...m, step } : m)),
+        }))
+      }
+    }, 900)
+
     try {
       const fd = new FormData()
       fd.append('file', file)
@@ -293,7 +372,14 @@ export default function App() {
       applyScanResult(data, { title: file.name })
     } catch (e) {
       setError(e.message)
+      patchActive((session) => ({
+        messages: [
+          ...session.messages.filter((m) => m.type !== 'loading'),
+          { id: nextId(), role: 'assistant', type: 'error', title: '파일 검사 실패', body: e.message },
+        ],
+      }))
     } finally {
+      clearInterval(timer)
       setLoading(false)
     }
   }
@@ -403,7 +489,7 @@ export default function App() {
           </div>
           <div>
             <h1>SafePrompt Guard</h1>
-            <p>외부 반입 전 보안 검사 에이전트</p>
+            <p>외부 공유 전 보안 검사 에이전트</p>
           </div>
         </div>
         <div className="topbar-actions">
@@ -468,10 +554,10 @@ export default function App() {
           <div className="chat-stream" ref={streamRef}>
             {messages.length === 0 && (
               <div className="welcome-card">
-                <h2>외부로 나가기 전, 여기서 먼저 검사하세요</h2>
+                <h2>외부로 공유하기 전, 여기서 먼저 검사하세요</h2>
                 <p>
-                  AI 질문, Git push, 파일 공유, 협업 도구 전송 등{' '}
-                  <strong>외부 반입·유출</strong> 전에 민감정보를 탐지·마스킹합니다.
+                  외부 AI 공유, Git push, 파일 공유 등{' '}
+                  <strong>외부 공유·유출</strong> 전에 민감정보를 탐지·마스킹합니다.
                 </p>
                 <ul className="welcome-list">
                   <li>검사 이력은 왼쪽에서 확인</li>

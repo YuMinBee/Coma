@@ -143,6 +143,30 @@ def _tag_has_model(tag: dict[str, Any], model: str) -> bool:
     return False
 
 
+def _tag_model_name(tag: dict[str, Any]) -> str | None:
+    for key in ("name", "model"):
+        value = str(tag.get(key, "")).strip()
+        if value:
+            return value
+    return None
+
+
+def _is_gemma_model(tag: dict[str, Any]) -> bool:
+    return any("gemma" in str(tag.get(key, "")).lower() for key in ("name", "model"))
+
+
+def _find_available_model(models: list[Any], preferred_model: str = DEFAULT_MODEL) -> str | None:
+    for item in models:
+        if isinstance(item, dict) and _tag_has_model(item, preferred_model):
+            return _tag_model_name(item)
+
+    for item in models:
+        if isinstance(item, dict) and _is_gemma_model(item):
+            return _tag_model_name(item)
+
+    return None
+
+
 async def check_ollama_available() -> bool:
     return await fetch_ollama_tags() is not None
 
@@ -154,18 +178,36 @@ async def check_model_available(model: str = DEFAULT_MODEL) -> bool:
     models = data.get("models", [])
     if not isinstance(models, list):
         return False
-    return any(isinstance(item, dict) and _tag_has_model(item, model) for item in models)
+    return _find_available_model(models, model) is not None
 
 
-async def local_gemma_status(model: str = DEFAULT_MODEL) -> dict[str, bool]:
+async def resolve_gemma_model(model: str = DEFAULT_MODEL) -> str | None:
     data = await fetch_ollama_tags()
     if not data:
-        return {"ollama_available": False, "gemma_available": False}
+        return None
     models = data.get("models", [])
-    gemma_available = isinstance(models, list) and any(
-        isinstance(item, dict) and _tag_has_model(item, model) for item in models
-    )
-    return {"ollama_available": True, "gemma_available": gemma_available}
+    if not isinstance(models, list):
+        return None
+    return _find_available_model(models, model)
+
+
+async def local_gemma_status(model: str = DEFAULT_MODEL) -> dict[str, bool | str | None]:
+    data = await fetch_ollama_tags()
+    if not data:
+        return {
+            "ollama_available": False,
+            "gemma_available": False,
+            "gemma_model": None,
+            "preferred_model": model,
+        }
+    models = data.get("models", [])
+    selected_model = _find_available_model(models, model) if isinstance(models, list) else None
+    return {
+        "ollama_available": True,
+        "gemma_available": selected_model is not None,
+        "gemma_model": selected_model,
+        "preferred_model": model,
+    }
 
 
 async def _ollama_generate(
@@ -175,8 +217,12 @@ async def _ollama_generate(
     json_mode: bool = False,
     temperature: float = 0.1,
 ) -> str | None:
+    selected_model = await resolve_gemma_model(model)
+    if not selected_model:
+        return None
+
     payload: dict[str, Any] = {
-        "model": model,
+        "model": selected_model,
         "prompt": prompt,
         "stream": False,
         "options": {
@@ -274,6 +320,33 @@ def _clean_quote(value: Any) -> str | None:
     if not quote or quote.lower() in {"none", "null", "n/a", "safe"}:
         return None
     return quote[:500]
+
+
+def _is_secret_reference_quote(quote: str | None) -> bool:
+    if not quote:
+        return False
+
+    lower = quote.lower()
+    if any(
+        token in lower
+        for token in (
+            "os.getenv(",
+            "getenv(",
+            "process.env",
+            "settings.",
+            "config.",
+            "environ.",
+        )
+    ):
+        return True
+
+    return bool(
+        re.search(
+            r"\b(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key)\s*:\s*"
+            r"(?:str|string|bytes|int|bool)\b",
+            lower,
+        )
+    )
 
 
 def _clean_model_text(value: Any) -> str | None:
@@ -387,6 +460,8 @@ async def analyze_with_gemma(text: str) -> tuple[list[Finding], str, str]:
         quote = _clean_quote(item.get("exact_quote") or item.get("quote") or item.get("value"))
         if not quote:
             quote = _line_text(text, line)
+        if category == "SECRET" and _is_secret_reference_quote(quote):
+            continue
         start, end = _find_quote_span(text, quote, line)
         if start is not None:
             line = _line_number(text, start)
@@ -412,7 +487,10 @@ async def analyze_with_gemma(text: str) -> tuple[list[Finding], str, str]:
             )
         )
 
-    return findings, _normalize_risk_level(data.get("risk_level")), str(data.get("summary") or "")
+    risk_level = _normalize_risk_level(data.get("risk_level"))
+    if not findings:
+        risk_level = "LOW"
+    return findings, risk_level, str(data.get("summary") or "")
 
 
 async def generate_safe_prompt(masked_text: str, summary: str) -> str | None:
