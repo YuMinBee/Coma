@@ -202,11 +202,12 @@ def render_report(
     use_gemma: bool,
 ) -> str:
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    display_dataset_path = display_path(dataset_path)
     lines = [
         "# SafePromptGuard v4.1 Eval Report",
         "",
         f"> Generated: {generated_at}",
-        f"> Dataset: `{dataset_path.as_posix()}`",
+        f"> Dataset: `{display_dataset_path}`",
         f"> Gemma: {'ON' if use_gemma else 'OFF'}",
         "",
         "## Summary",
@@ -255,6 +256,13 @@ def render_report(
         )
 
     return "\n".join(lines) + "\n"
+
+
+def display_path(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(REPO_ROOT.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
 
 
 def print_console_summary(summary: dict[str, Any]) -> None:

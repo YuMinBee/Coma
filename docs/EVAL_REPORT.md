@@ -1,13 +1,13 @@
 # SafePromptGuard v4.1 Eval Report
 
-> Generated: 2026-06-26 15:01 UTC
-> Dataset: `C:/Users/pc/Desktop/safecode_guard/SafePromptGuard_v3/backend/eval/dataset.jsonl`
+> Generated: 2026-06-26 15:03 UTC
+> Dataset: `backend/eval/dataset.jsonl`
 > Gemma: OFF
 
 ## Summary
 
 - Case pass rate: 46/50 (92.0%)
-- Latency avg/p50/p95/max: 1.4ms / 1ms / 2ms / 23ms
+- Latency avg/p50/p95/max: 1.1ms / 1ms / 1ms / 21ms
 
 ## Check Accuracy
 
@@ -34,8 +34,8 @@
 
 | ID | Category | Pass | Action | Findings | Latency | Failed Checks |
 |---|---|---:|---|---:|---:|---|
-| secret_aws_key_001 | secrets | yes | block | 1 | 23ms | - |
-| secret_api_key_002 | secrets | yes | block | 2 | 2ms | - |
+| secret_aws_key_001 | secrets | yes | block | 1 | 21ms | - |
+| secret_api_key_002 | secrets | yes | block | 2 | 1ms | - |
 | secret_access_key_003 | secrets | yes | block | 1 | 1ms | - |
 | secret_password_004 | secrets | yes | mask | 1 | 1ms | - |
 | secret_bearer_005 | secrets | yes | mask | 1 | 1ms | - |
@@ -59,11 +59,11 @@
 | internal_ip_003 | internal_info | yes | mask | 1 | 1ms | - |
 | internal_domain_004 | internal_info | yes | mask | 2 | 1ms | - |
 | internal_domain_005 | internal_info | yes | mask | 1 | 1ms | - |
-| internal_domain_006 | internal_info | yes | mask | 2 | 2ms | - |
+| internal_domain_006 | internal_info | yes | mask | 2 | 1ms | - |
 | internal_table_007 | internal_info | yes | mask | 1 | 1ms | - |
-| internal_table_008 | internal_info | yes | mask | 1 | 2ms | - |
-| internal_prod_009 | internal_info | yes | mask | 1 | 8ms | - |
-| internal_admin_010 | internal_info | yes | mask | 1 | 2ms | - |
+| internal_table_008 | internal_info | yes | mask | 1 | 1ms | - |
+| internal_prod_009 | internal_info | yes | mask | 1 | 1ms | - |
+| internal_admin_010 | internal_info | yes | mask | 1 | 1ms | - |
 | benign_prompt_001 | benign_prompt | yes | allow | 0 | 0ms | - |
 | benign_prompt_002 | benign_prompt | yes | allow | 0 | 0ms | - |
 | benign_prompt_003 | benign_prompt | yes | allow | 0 | 0ms | - |
@@ -78,7 +78,7 @@
 | edge_type_hint_002 | edge_case | yes | allow | 0 | 0ms | - |
 | edge_token_label_003 | edge_case | yes | allow | 0 | 0ms | - |
 | edge_short_bearer_004 | edge_case | yes | allow | 0 | 0ms | - |
-| edge_example_email_005 | edge_case | no | mask | 1 | 2ms | detected, masked, overall_action |
+| edge_example_email_005 | edge_case | no | mask | 1 | 1ms | detected, masked, overall_action |
 | edge_invalid_ip_006 | edge_case | no | mask | 2 | 1ms | detected, masked, overall_action |
 | edge_settings_ref_007 | edge_case | yes | allow | 0 | 0ms | - |
 | edge_api_key_type_008 | edge_case | yes | allow | 0 | 0ms | - |
