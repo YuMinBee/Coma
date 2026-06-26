@@ -16,6 +16,16 @@ python backend/scripts/evaluate_scan.py
 
 현재 기본 정책과 Gemma OFF 기준 baseline은 `docs/EVAL_REPORT.md`에 저장되며, case pass rate 46/50, secret leakage 50/50입니다.
 
+## SafePromptGuard v4.2 - Gitleaks Detector
+
+v4.2는 Gitleaks를 optional detector로 추가합니다. Gitleaks는 policy engine을 대체하지 않고, 코드/파일 secret 탐지 결과를 기존 `Finding`으로 변환한 뒤 `policy_engine.py`의 allow/mask/block 판단으로 전달합니다.
+
+```text
+Gitleaks result -> Finding -> policy_engine -> allow/mask/block
+```
+
+Gitleaks CLI가 설치되어 있지 않으면 자동으로 skip되며, 기존 regex/rule/Gemma detector만으로 계속 동작합니다. TruffleHog 연동은 후속 v4.x 작업으로 분리합니다.
+
 **외부 AI(ChatGPT, Gemini 등) 입력 전 유출 위험 검사 · 마스킹 · 안전 프롬프트 생성** 웹앱 MVP
 
 ## 기능

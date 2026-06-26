@@ -7,6 +7,7 @@ from constants import MAX_TEXT_CHARS
 class ScanRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=MAX_TEXT_CHARS)
     use_gemma: bool = True
+    use_gitleaks: bool = True
 
 
 class Finding(BaseModel):
@@ -23,7 +24,7 @@ class Finding(BaseModel):
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     reason: str | None = None
     action: str | None = None
-    source: Literal["regex", "rule", "gemma"]
+    source: Literal["regex", "rule", "gemma", "gitleaks"]
     cell_index: int | None = None
     cell_type: str | None = None
 
@@ -69,6 +70,8 @@ class ScanResponse(BaseModel):
     policy_decisions: list[PolicyDecision] = Field(default_factory=list)
     gemma_available: bool
     gemma_used: bool
+    gitleaks_available: bool = False
+    gitleaks_used: bool = False
     source_kind: Literal["text", "notebook"] = "text"
     masked_notebook_json: str | None = None
     notebook_cell_count: int | None = None

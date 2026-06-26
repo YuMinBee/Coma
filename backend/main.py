@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from models.schemas import ScanRequest, ScanResponse, ScanLogListResponse
 from services.scanner import run_scan
 from services import gemma_analyzer
+from services import gitleaks_scanner
 from services import audit_log
 from services.notebook_loader import NotebookParseError, prepare_notebook_scan
 from constants import (
@@ -64,6 +65,7 @@ async def health():
         "gemma_available": gemma_status["gemma_available"],
         "gemma_model": gemma_status["gemma_model"] or gemma_analyzer.DEFAULT_MODEL,
         "preferred_gemma_model": gemma_status["preferred_model"],
+        "gitleaks_available": gitleaks_scanner.gitleaks_available(),
         "ollama_base": gemma_analyzer.OLLAMA_BASE,
         "audit_db": str(audit_log.db_path()),
         "allowed_extensions": policy["extensions"],
@@ -84,7 +86,11 @@ async def scan_text(req: ScanRequest):
         raise HTTPException(status_code=400, detail="검사할 텍스트가 비어 있습니다.")
 
     started = time.perf_counter()
-    result = await run_scan(req.text, use_gemma=req.use_gemma)
+    result = await run_scan(
+        req.text,
+        use_gemma=req.use_gemma,
+        use_gitleaks=req.use_gitleaks,
+    )
     duration_ms = int((time.perf_counter() - started) * 1000)
 
     audit_log.record_scan(
@@ -101,6 +107,7 @@ async def scan_text(req: ScanRequest):
 async def scan_file(
     file: UploadFile = File(...),
     use_gemma: bool = True,
+    use_gitleaks: bool = True,
 ):
     name = file.filename or "upload.txt"
     ext = Path(name).suffix.lower()
@@ -140,6 +147,7 @@ async def scan_file(
     result = await run_scan(
         scan_text,
         use_gemma=use_gemma,
+        use_gitleaks=use_gitleaks,
         filename=name,
         notebook_ctx=notebook_ctx,
     )

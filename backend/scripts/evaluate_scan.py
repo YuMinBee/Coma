@@ -23,6 +23,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from services.scanner import run_scan
+from services.gitleaks_scanner import gitleaks_available
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATASET = REPO_ROOT / "backend" / "eval" / "dataset.jsonl"
@@ -87,11 +88,17 @@ def load_cases(path: Path) -> list[EvalCase]:
     return cases
 
 
-async def evaluate_case(case: EvalCase, *, use_gemma: bool) -> CaseResult:
+async def evaluate_case(
+    case: EvalCase,
+    *,
+    use_gemma: bool,
+    use_gitleaks: bool,
+) -> CaseResult:
     started = time.perf_counter()
     result = await run_scan(
         case.text,
         use_gemma=use_gemma,
+        use_gitleaks=use_gitleaks,
         filename=case.filename,
     )
     latency_ms = int((time.perf_counter() - started) * 1000)
@@ -134,10 +141,21 @@ def has_secret_leakage(
     return any(term and term in haystack for term in sensitive_terms)
 
 
-async def run_eval(cases: list[EvalCase], *, use_gemma: bool) -> list[CaseResult]:
+async def run_eval(
+    cases: list[EvalCase],
+    *,
+    use_gemma: bool,
+    use_gitleaks: bool,
+) -> list[CaseResult]:
     results: list[CaseResult] = []
     for case in cases:
-        results.append(await evaluate_case(case, use_gemma=use_gemma))
+        results.append(
+            await evaluate_case(
+                case,
+                use_gemma=use_gemma,
+                use_gitleaks=use_gitleaks,
+            )
+        )
     return results
 
 
@@ -200,15 +218,20 @@ def render_report(
     *,
     dataset_path: Path,
     use_gemma: bool,
+    use_gitleaks: bool,
 ) -> str:
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     display_dataset_path = display_path(dataset_path)
+    gitleaks_status = "ON" if use_gitleaks else "OFF"
+    if use_gitleaks and not gitleaks_available():
+        gitleaks_status = "ON (not installed, skipped)"
     lines = [
-        "# SafePromptGuard v4.1 Eval Report",
+        "# SafePromptGuard v4.2 Eval Report",
         "",
         f"> Generated: {generated_at}",
         f"> Dataset: `{display_dataset_path}`",
         f"> Gemma: {'ON' if use_gemma else 'OFF'}",
+        f"> Gitleaks: {gitleaks_status}",
         "",
         "## Summary",
         "",
@@ -285,6 +308,11 @@ async def async_main() -> int:
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT), help="Markdown report path")
     parser.add_argument("--use-gemma", action="store_true", help="Enable local Gemma analysis")
     parser.add_argument(
+        "--no-gitleaks",
+        action="store_true",
+        help="Disable optional Gitleaks detector during evaluation",
+    )
+    parser.add_argument(
         "--fail-on-mismatch",
         action="store_true",
         help="Exit non-zero when any case has a failed expected check",
@@ -293,8 +321,13 @@ async def async_main() -> int:
 
     dataset_path = Path(args.dataset)
     output_path = Path(args.output)
+    use_gitleaks = not args.no_gitleaks
     cases = load_cases(dataset_path)
-    results = await run_eval(cases, use_gemma=args.use_gemma)
+    results = await run_eval(
+        cases,
+        use_gemma=args.use_gemma,
+        use_gitleaks=use_gitleaks,
+    )
     summary = summarize(results)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -304,6 +337,7 @@ async def async_main() -> int:
             summary,
             dataset_path=dataset_path,
             use_gemma=args.use_gemma,
+            use_gitleaks=use_gitleaks,
         ),
         encoding="utf-8",
     )

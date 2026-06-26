@@ -2,6 +2,7 @@ from models.schemas import Finding, ScanResponse
 from services.regex_scanner import scan_by_regex
 from services.rule_scanner import scan_by_rules
 from services import gemma_analyzer
+from services.gitleaks_scanner import gitleaks_available, scan_with_gitleaks
 from services.masking import (
     apply_masking,
     coalesce_span_findings,
@@ -23,8 +24,9 @@ NotebookContext = tuple[dict, list[CellSegment]] | None
 
 SOURCE_ORDER = {
     "gemma": 0,
-    "regex": 1,
-    "rule": 2,
+    "gitleaks": 1,
+    "regex": 2,
+    "rule": 3,
 }
 
 
@@ -148,6 +150,7 @@ def _recommendations(
 async def run_scan(
     text: str,
     use_gemma: bool = True,
+    use_gitleaks: bool = True,
     filename: str | None = None,
     notebook_ctx: NotebookContext = None,
     policy_config: PolicyConfig | None = None,
@@ -158,7 +161,13 @@ async def run_scan(
         nb, segments = notebook_ctx
     regex_findings = scan_by_regex(text)
     rule_findings = scan_by_rules(text, filename)
-    all_findings = _dedupe_findings(regex_findings + rule_findings)
+    gitleaks_available_flag = gitleaks_available() if use_gitleaks else False
+    gitleaks_findings = (
+        scan_with_gitleaks(text, filename=filename)
+        if gitleaks_available_flag
+        else []
+    )
+    all_findings = _dedupe_findings(gitleaks_findings + regex_findings + rule_findings)
 
     gemma_available = await gemma_analyzer.check_model_available() if use_gemma else False
     gemma_used = False
@@ -221,6 +230,8 @@ async def run_scan(
         policy_decisions=policy_evaluation.policy_decisions,
         gemma_available=gemma_available,
         gemma_used=gemma_used,
+        gitleaks_available=gitleaks_available_flag,
+        gitleaks_used=use_gitleaks and gitleaks_available_flag,
         source_kind="notebook" if segments else "text",
         masked_notebook_json=masked_notebook_json,
         notebook_cell_count=len(segments) if segments else None,
