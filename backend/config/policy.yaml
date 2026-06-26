@@ -1,0 +1,17 @@
+policies:
+  - id: secret.api_key.block
+    detector: api_key
+    severity: critical
+    action: block
+
+  - id: internal.ip.mask
+    detector: internal_ip
+    severity: medium
+    action: mask
+
+  - id: dummy.secret.allow
+    detector: api_key
+    severity: low
+    action: allow
+    condition:
+      contains: example

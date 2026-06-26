@@ -1,5 +1,11 @@
 # SafePrompt Guard
 
+## SafePromptGuard v4 - Local AI Security Gateway
+
+SafePromptGuard v3가 외부 AI 공유 전 민감정보 탐지와 마스킹에 집중했다면, v4는 policy.yaml 기반 allow/mask/block 정책을 추가하여 탐지 결과를 조직 정책에 따라 처리하는 Local AI Security Gateway 구조로 확장했습니다.
+
+이번 v4 정책 엔진은 기존 regex_scanner, rule_scanner, gemma_analyzer를 detector로 유지하고, scanner.py 흐름을 탐지 → 정책 판정 → 마스킹/차단/허용으로 재구성합니다. 이를 통해 기존 UI 호환성을 유지하면서도 block, mask, allow의 명확한 보안 판단을 제공할 수 있습니다.
+
 **외부 AI(ChatGPT, Gemini 등) 입력 전 유출 위험 검사 · 마스킹 · 안전 프롬프트 생성** 웹앱 MVP
 
 ## 기능

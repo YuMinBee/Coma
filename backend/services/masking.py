@@ -36,9 +36,13 @@ TYPE_MASK_PRIORITY: dict[str, int] = {
 }
 
 
-def _placeholder(finding: Finding) -> str:
+def placeholder_for_finding(finding: Finding) -> str:
     label = MASK_LABELS.get(finding.type) or CATEGORY_MASK.get(finding.category, "MASKED")
     return f"[{label}]"
+
+
+def _placeholder(finding: Finding) -> str:
+    return placeholder_for_finding(finding)
 
 
 def _span_len(f: Finding) -> int:

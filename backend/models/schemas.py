@@ -13,10 +13,12 @@ class Finding(BaseModel):
     type: str
     category: str
     value: str
+    masked_value: str | None = None
     start: int | None = None
     end: int | None = None
     line: int | None = None
     severity: Literal["HIGH", "MEDIUM", "LOW"]
+    detector: str | None = None
     exact_quote: str | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     reason: str | None = None
@@ -24,6 +26,14 @@ class Finding(BaseModel):
     source: Literal["regex", "rule", "gemma"]
     cell_index: int | None = None
     cell_type: str | None = None
+
+
+class PolicyDecision(BaseModel):
+    finding_index: int
+    detector: str | None = None
+    policy_id: str | None = None
+    policy_action: Literal["allow", "mask", "block"]
+    decision_reason: str
 
 
 class ScanLogEntry(BaseModel):
@@ -52,7 +62,11 @@ class ScanResponse(BaseModel):
     detected_items: list[str]
     recommendations: list[str]
     masked_text: str
-    safe_prompt: str
+    safe_prompt: str | None
+    overall_action: Literal["allow", "mask", "block"] = "allow"
+    blocked: bool = False
+    blocked_reason: str | None = None
+    policy_decisions: list[PolicyDecision] = Field(default_factory=list)
     gemma_available: bool
     gemma_used: bool
     source_kind: Literal["text", "notebook"] = "text"

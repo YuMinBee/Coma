@@ -2,11 +2,21 @@ from models.schemas import Finding, ScanResponse
 from services.regex_scanner import scan_by_regex
 from services.rule_scanner import scan_by_rules
 from services import gemma_analyzer
-from services.masking import apply_masking, coalesce_span_findings
+from services.masking import (
+    apply_masking,
+    coalesce_span_findings,
+    placeholder_for_finding,
+)
 from services.notebook_loader import (
     CellSegment,
     build_masked_notebook,
     enrich_findings_with_cells,
+)
+from services.policy_engine import (
+    PolicyConfig,
+    detector_for_finding,
+    evaluate_findings,
+    findings_for_actions,
 )
 
 NotebookContext = tuple[dict, list[CellSegment]] | None
@@ -45,6 +55,18 @@ def _sort_findings(findings: list[Finding]) -> list[Finding]:
             f.start if f.start is not None else 999_999,
         ),
     )
+
+
+def _annotate_findings(findings: list[Finding]) -> list[Finding]:
+    return [
+        finding.model_copy(
+            update={
+                "detector": detector_for_finding(finding),
+                "masked_value": placeholder_for_finding(finding),
+            }
+        )
+        for finding in findings
+    ]
 
 
 def _compute_risk(findings: list[Finding], gemma_level: str) -> tuple[str, int]:
@@ -128,6 +150,7 @@ async def run_scan(
     use_gemma: bool = True,
     filename: str | None = None,
     notebook_ctx: NotebookContext = None,
+    policy_config: PolicyConfig | None = None,
 ) -> ScanResponse:
     nb: dict | None = None
     segments: list[CellSegment] | None = None
@@ -157,14 +180,24 @@ async def run_scan(
     if segments:
         all_findings = enrich_findings_with_cells(all_findings, segments, text)
 
+    all_findings = _annotate_findings(all_findings)
+    policy_evaluation = evaluate_findings(all_findings, policy_config)
+    findings_to_mask = findings_for_actions(
+        all_findings,
+        policy_evaluation.policy_decisions,
+        {"mask", "block"},
+    )
+
     risk_level, risk_score = _compute_risk(all_findings, gemma_level)
-    masked_text = apply_masking(text, all_findings)
+    masked_text = apply_masking(text, findings_to_mask)
     masked_notebook_json: str | None = None
     if nb and segments:
-        masked_notebook_json = build_masked_notebook(nb, segments, all_findings)
+        masked_notebook_json = build_masked_notebook(nb, segments, findings_to_mask)
 
-    safe_prompt: str
-    if not all_findings:
+    safe_prompt: str | None
+    if policy_evaluation.blocked:
+        safe_prompt = None
+    elif not all_findings:
         safe_prompt = ""
     elif gemma_used:
         generated = await gemma_analyzer.generate_safe_prompt(masked_text, gemma_summary)
@@ -182,6 +215,10 @@ async def run_scan(
         ),
         masked_text=masked_text,
         safe_prompt=safe_prompt,
+        overall_action=policy_evaluation.overall_action,
+        blocked=policy_evaluation.blocked,
+        blocked_reason=policy_evaluation.blocked_reason,
+        policy_decisions=policy_evaluation.policy_decisions,
         gemma_available=gemma_available,
         gemma_used=gemma_used,
         source_kind="notebook" if segments else "text",
