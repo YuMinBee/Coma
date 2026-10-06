@@ -1,7 +1,28 @@
 import { useState, useEffect, useCallback } from 'react'
 import { IMPORT_CONTEXTS } from '../constants'
+import { redactFinding, redactResultForStorage } from '../utils/restore'
 
 const STORAGE_KEY = 'safeprompt-sessions-v2'
+const UNSAVED_PREVIEW = '(원문은 이 브라우저에 저장하지 않습니다)'
+
+// 검사 기록은 localStorage에 남는다. 원문 미리보기와 찾아낸 원래 값 대신 마스킹된 내용만 저장한다.
+function redactMessageForStorage(message) {
+  if (message.role === 'user' && message.preview) {
+    return { ...message, preview: message.maskedPreview ?? UNSAVED_PREVIEW }
+  }
+  if (message.type === 'findings' && message.findings) {
+    return { ...message, findings: message.findings.map(redactFinding) }
+  }
+  return message
+}
+
+function redactSessionForStorage(session) {
+  return {
+    ...session,
+    messages: session.messages.map(redactMessageForStorage),
+    lastResult: redactResultForStorage(session.lastResult),
+  }
+}
 
 function newSessionId() {
   return `s-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -80,7 +101,10 @@ export function useSessions(initialContextId = 'ai') {
   }, [activeId, sessions])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ sessions, activeId }))
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ sessions: sessions.map(redactSessionForStorage), activeId }),
+    )
   }, [sessions, activeId])
 
   const activeSession =

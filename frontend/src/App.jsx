@@ -199,7 +199,13 @@ export default function App() {
   const applyScanResult = (data, titlePatch = {}) => {
     const rc = riskClass(data.risk_level)
     patchActive((session) => {
-      const base = session.messages.filter((m) => m.type !== 'loading')
+      const maskedText = data.masked_text || ''
+      const maskedPreview = maskedText.slice(0, 1200) + (maskedText.length > 1200 ? '\n…' : '')
+      const lastUserIndex = session.messages.map((m) => m.role).lastIndexOf('user')
+      // 저장할 때는 원문 미리보기 대신 이 마스킹본을 쓴다(useSessions 참고).
+      const base = session.messages
+        .map((m, i) => (i === lastUserIndex ? { ...m, maskedPreview } : m))
+        .filter((m) => m.type !== 'loading')
       const hasSafePrompt = Boolean(data.safe_prompt?.trim())
       const analysisSteps = buildAnalysisSteps(data, hasSafePrompt)
       const newMessages = [

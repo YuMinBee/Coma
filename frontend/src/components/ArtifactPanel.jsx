@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react'
 import { X, Copy, Download, PanelRightOpen } from 'lucide-react'
 import { downloadText } from '../utils/export'
 import { ARTIFACT_TABS } from '../hooks/useArtifactPanel'
 import FindingAccordion from './FindingAccordion'
 import ContextActions from './ContextActions'
+import RestorePanel, { restoredText } from './RestorePanel'
 
 export default function ArtifactPanel({
   open,
@@ -15,12 +17,19 @@ export default function ArtifactPanel({
   onToggleFinding,
   onCopy,
 }) {
+  // 복원할 AI 답변은 화면에만 둔다. 검사 결과가 바뀌면 비운다.
+  const [restoreDraft, setRestoreDraft] = useState('')
+  useEffect(() => setRestoreDraft(''), [result])
+
   if (!open || !result) return null
 
   const masked = result.masked_text || ''
   const prompt = result.safe_prompt || ''
-  const tabs = ARTIFACT_TABS.filter((t) => t.id !== 'prompt' || prompt.trim())
-  const activeTab = prompt.trim() || tab !== 'prompt' ? tab : 'masked'
+  const canRestore = Boolean(result.placeholders?.length || result.placeholders_dropped)
+  const tabs = ARTIFACT_TABS.filter(
+    (t) => (t.id !== 'prompt' || prompt.trim()) && (t.id !== 'restore' || canRestore),
+  )
+  const activeTab = tabs.some((t) => t.id === tab) ? tab : 'masked'
 
   return (
     <aside className="artifact-panel" aria-label="검사 결과 상세">
@@ -76,6 +85,9 @@ export default function ArtifactPanel({
             onToggle={onToggleFinding}
           />
         )}
+        {activeTab === 'restore' && (
+          <RestorePanel result={result} draft={restoreDraft} onDraftChange={setRestoreDraft} />
+        )}
       </div>
 
       <footer className="artifact-footer">
@@ -101,6 +113,15 @@ export default function ArtifactPanel({
             onClick={() => onCopy(prompt, '안전 프롬프트')}
           >
             <Copy size={14} /> 복사
+          </button>
+        )}
+        {activeTab === 'restore' && restoreDraft.trim() && result.placeholders?.length > 0 && (
+          <button
+            type="button"
+            className="msg-btn msg-btn--primary"
+            onClick={() => onCopy(restoredText(result, restoreDraft), '복원된 답변')}
+          >
+            <Copy size={14} /> 복원 결과 복사
           </button>
         )}
         {activeTab === 'masked' && (

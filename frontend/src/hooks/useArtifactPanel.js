@@ -4,6 +4,7 @@ export const ARTIFACT_TABS = [
   { id: 'masked', label: '마스킹된 내용' },
   { id: 'prompt', label: '안전 프롬프트' },
   { id: 'findings', label: '탐지 상세' },
+  { id: 'restore', label: 'AI 답변 복원' },
 ]
 
 export function defaultArtifactTab(contextId) {

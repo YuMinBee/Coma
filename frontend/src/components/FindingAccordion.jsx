@@ -73,6 +73,11 @@ export default function FindingAccordion({
                 {f.exact_quote && (
                   <pre className="finding-quote-block">{f.exact_quote}</pre>
                 )}
+                {f.masked_value && (
+                  <p className="finding-action-line">
+                    <strong>{'가림 표시'}</strong> <code>{f.masked_value}</code>
+                  </p>
+                )}
                 {f.action && (
                   <p className="finding-action-line">
                     <strong>{'\uAD8C\uC7A5 \uC870\uCE58'}</strong> {f.action}
