@@ -56,6 +56,24 @@ class ScanLogListResponse(BaseModel):
     db_path: str
 
 
+class PlaceholderEntry(BaseModel):
+    """masked_text의 번호 placeholder와 원래 값. 사용자가 보낸 원문에 있던 값이며 검사 이력에는 저장하지 않는다."""
+
+    placeholder: str
+    type: str
+    original: str
+
+
+class RestoreRequest(BaseModel):
+    text: str = Field(..., max_length=MAX_TEXT_CHARS)
+    placeholders: list[PlaceholderEntry]
+
+
+class RestoreResponse(BaseModel):
+    restored_text: str
+    replaced_count: int
+
+
 class ScanResponse(BaseModel):
     risk_level: Literal["높음", "중간", "낮음"]
     risk_score: int
@@ -75,3 +93,4 @@ class ScanResponse(BaseModel):
     source_kind: Literal["text", "notebook"] = "text"
     masked_notebook_json: str | None = None
     notebook_cell_count: int | None = None
+    placeholders: list[PlaceholderEntry] = Field(default_factory=list)

@@ -8,7 +8,14 @@ sys.path.insert(0, str(Path(__file__).parent))
 from fastapi import FastAPI, File, Query, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from models.schemas import ScanRequest, ScanResponse, ScanLogListResponse
+from models.schemas import (
+    RestoreRequest,
+    RestoreResponse,
+    ScanLogListResponse,
+    ScanRequest,
+    ScanResponse,
+)
+from services.masking import restore_placeholders
 from services.scanner import run_scan
 from services import gemma_analyzer
 from services import gitleaks_scanner
@@ -101,6 +108,13 @@ async def scan_text(req: ScanRequest):
         text_length=len(req.text),
     )
     return result
+
+
+@app.post("/api/restore", response_model=RestoreResponse)
+async def restore_text(req: RestoreRequest):
+    """외부 AI 답변 속 번호 placeholder를 원래 값으로 되돌린다. 원래 값은 요청에 들어 있으며 저장하지 않는다."""
+    restored, count = restore_placeholders(req.text, [entry.model_dump() for entry in req.placeholders])
+    return RestoreResponse(restored_text=restored, replaced_count=count)
 
 
 @app.post("/api/scan/file", response_model=ScanResponse)

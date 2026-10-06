@@ -1,3 +1,5 @@
+import re
+
 from models.schemas import Finding
 
 MASK_LABELS: dict[str, str] = {
@@ -127,7 +129,33 @@ def coalesce_span_findings(findings: list[Finding]) -> list[Finding]:
     return other + merged
 
 
-def mask_by_spans(text: str, findings: list[Finding]) -> str:
+class PlaceholderMap:
+    """같은 값에는 같은 번호를, 다른 값에는 새 번호를 붙인다([MASKED_PHONE_1], [MASKED_PHONE_2]).
+
+    외부 AI가 답변에서 placeholder를 그대로 쓰면 어떤 값을 가리키는지 유지되고, entries로 원래 값을 되돌릴 수 있다.
+    원래 값은 사용자가 보낸 원문에 이미 있던 것이며 검사 이력 DB에는 저장하지 않는다.
+    """
+
+    def __init__(self) -> None:
+        self._by_value: dict[tuple[str, str], str] = {}
+        self._counts: dict[str, int] = {}
+        self.entries: list[dict[str, str]] = []
+
+    def placeholder(self, finding: Finding, original: str) -> str:
+        label = placeholder_for_finding(finding)[1:-1]
+        key = (label, original)
+        if key not in self._by_value:
+            self._counts[label] = self._counts.get(label, 0) + 1
+            placeholder = f"[{label}_{self._counts[label]}]"
+            self._by_value[key] = placeholder
+            self.entries.append({"placeholder": placeholder, "type": finding.type, "original": original})
+        return self._by_value[key]
+
+    def lookup(self, finding: Finding, original: str) -> str | None:
+        return self._by_value.get((placeholder_for_finding(finding)[1:-1], original))
+
+
+def mask_by_spans(text: str, findings: list[Finding], placeholders: PlaceholderMap | None = None) -> str:
     span_findings = sorted(
         (
             f
@@ -145,7 +173,8 @@ def mask_by_spans(text: str, findings: list[Finding]) -> str:
         if f.start < cursor:
             continue
         parts.append(text[cursor : f.start])
-        parts.append(_placeholder(f))
+        original = text[f.start : f.end]
+        parts.append(placeholders.placeholder(f, original) if placeholders is not None else _placeholder(f))
         cursor = f.end
     parts.append(text[cursor:])
     return "".join(parts)
@@ -172,7 +201,26 @@ def _line_findings_as_spans(text: str, findings: list[Finding]) -> list[Finding]
     return spans
 
 
-def apply_masking(text: str, findings: list[Finding]) -> str:
+def apply_masking(text: str, findings: list[Finding], placeholders: PlaceholderMap | None = None) -> str:
+    """placeholders를 주면 번호 붙은 placeholder를 쓰고 원래 값을 기록한다. 없으면 [MASKED_PHONE]처럼 라벨만 쓴다."""
     span_findings = [f for f in findings if f.start is not None and f.end is not None]
     coalesced = coalesce_span_findings(span_findings + _line_findings_as_spans(text, findings))
-    return mask_by_spans(text, coalesced)
+    return mask_by_spans(text, coalesced, placeholders)
+
+
+def restore_placeholders(text: str, entries: list[dict[str, str]]) -> tuple[str, int]:
+    """외부 AI 답변 속 placeholder를 원래 값으로 되돌린다. AI가 대괄호를 빼고 쓴 경우(MASKED_PHONE_1)도 처리한다."""
+    mapping = {entry["placeholder"][1:-1]: entry["original"] for entry in entries if entry.get("placeholder")}
+    if not mapping or not text:
+        return text, 0
+    names = "|".join(re.escape(name) for name in sorted(mapping, key=len, reverse=True))
+    # 대괄호 없이 쓰면 영숫자 경계만 본다. \b는 한글도 단어 문자로 봐서 "MASKED_EMAIL_1로"를 놓친다.
+    pattern = re.compile(rf"\[({names})\]|(?<![A-Za-z0-9_])({names})(?![A-Za-z0-9_])")
+    count = 0
+
+    def replace(match: re.Match[str]) -> str:
+        nonlocal count
+        count += 1
+        return mapping[match.group(1) or match.group(2)]
+
+    return pattern.sub(replace, text), count

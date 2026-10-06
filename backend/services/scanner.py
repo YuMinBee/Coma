@@ -1,9 +1,10 @@
-from models.schemas import Finding, ScanResponse
+from models.schemas import Finding, PlaceholderEntry, ScanResponse
 from services.regex_scanner import scan_by_regex
 from services.rule_scanner import scan_by_rules
 from services import gemma_analyzer
 from services.gitleaks_scanner import gitleaks_available, scan_with_gitleaks
 from services.masking import (
+    PlaceholderMap,
     apply_masking,
     coalesce_span_findings,
     placeholder_for_finding,
@@ -214,13 +215,16 @@ async def run_scan(
     }
 
     risk_level, risk_score = _compute_risk(all_findings, gemma_level)
+    placeholders = PlaceholderMap()
     masked_text = apply_masking(
         text,
         [finding for index, finding in enumerate(text_findings) if index in mask_indexes],
+        placeholders,
     )
     masked_notebook_json: str | None = None
     if nb and segments:
-        masked_notebook_json = build_masked_notebook(nb, segments, findings_to_mask)
+        masked_notebook_json = build_masked_notebook(nb, segments, findings_to_mask, placeholders)
+    all_findings = _with_numbered_placeholders(all_findings, text_findings, text, placeholders)
 
     safe_prompt: str | None
     if policy_evaluation.blocked:
@@ -254,4 +258,26 @@ async def run_scan(
         source_kind="notebook" if segments else "text",
         masked_notebook_json=masked_notebook_json,
         notebook_cell_count=len(segments) if segments else None,
+        placeholders=[PlaceholderEntry(**entry) for entry in placeholders.entries],
     )
+
+
+def _with_numbered_placeholders(
+    findings: list[Finding],
+    text_findings: list[Finding],
+    text: str,
+    placeholders: PlaceholderMap,
+) -> list[Finding]:
+    """마스킹된 finding의 masked_value를 실제로 쓰인 번호 placeholder로 바꾼다."""
+    lines = text.split("\n")
+    updated: list[Finding] = []
+    for finding, original_finding in zip(findings, text_findings):
+        if original_finding.start is not None and original_finding.end is not None:
+            original = text[original_finding.start : original_finding.end]
+        elif original_finding.line is not None and 1 <= original_finding.line <= len(lines):
+            original = lines[original_finding.line - 1]
+        else:
+            original = ""
+        numbered = placeholders.lookup(original_finding, original) if original else None
+        updated.append(finding.model_copy(update={"masked_value": numbered}) if numbered else finding)
+    return updated

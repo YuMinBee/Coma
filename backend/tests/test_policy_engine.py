@@ -96,8 +96,9 @@ def test_policy_allow_excludes_masking():
 
     assert result.overall_action == "allow"
     assert result.findings
-    assert "[MASKED_API_KEY]" not in result.masked_text
+    assert "MASKED_API_KEY" not in result.masked_text
     assert "sbx-shared-ab12cd34" in result.masked_text
+    assert result.placeholders == []
 
 
 def test_specific_allow_rule_overrides_generic_block():
@@ -165,7 +166,7 @@ def test_unmatched_finding_defaults_to_mask():
 
     assert result.overall_action == "mask"
     assert result.blocked is False
-    assert "[MASKED_API_KEY]" in result.masked_text
+    assert result.masked_text == 'API_KEY = "[MASKED_API_KEY_1]"'
 
 
 def test_block_response_safe_prompt_is_none():

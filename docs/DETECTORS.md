@@ -51,7 +51,7 @@ SafePrompt Guard는 세 단계로 값을 확정한다.
 - RFC 2606/6761 예약 도메인 이메일(`example.com`, `*.test`, `*.invalid`, `*.localhost`)
 - placeholder 값: `example`, `sample`, `dummy`, `placeholder`, `changeme`, `change-me`, `your_…`, `<…>`, `${…}`, `xxxx`, `****` 등을 포함한 값. 단어는 사람이 쓰는 형태(소문자·대문자·첫 글자 대문자)만 인정해서, 무작위 키에 `ExAmPLE`처럼 섞여 들어간 경우는 실제 키로 본다
 - 환경변수 참조(`os.getenv(...)`, `os.environ[...]`, `$DB_PASS`, `${DB_PASS}`), 타입 힌트(`password: str`)
-- 이미 마스킹된 placeholder(`[MASKED_EMAIL]`, `[EMAIL_1]`). 마스킹 결과를 다시 검사해도 결과가 같다
+- 이미 마스킹된 placeholder(`[MASKED_EMAIL]`, `[MASKED_EMAIL_1]`, `[EMAIL_1]`). 마스킹 결과를 다시 검사해도 새 탐지가 생기지 않는다(평가셋 3종으로 테스트)
 
 ## 정책 우선순위
 

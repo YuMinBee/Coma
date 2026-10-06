@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass
 
 from models.schemas import Finding
-from services.masking import apply_masking
+from services.masking import PlaceholderMap, apply_masking
 
 SCANNABLE_CELL_TYPES = frozenset({"code", "markdown", "raw"})
 
@@ -204,12 +204,17 @@ def _findings_for_cell_source(
     return local
 
 
-def build_masked_notebook(nb: dict, segments: list[CellSegment], findings: list[Finding]) -> str:
+def build_masked_notebook(
+    nb: dict,
+    segments: list[CellSegment],
+    findings: list[Finding],
+    placeholders: PlaceholderMap | None = None,
+) -> str:
     nb_out = copy.deepcopy(nb)
     nb_out["metadata"] = {}
     for seg in segments:
         cell_findings = _findings_for_cell_source(findings, seg)
-        masked_source = apply_masking(seg.source, cell_findings)
+        masked_source = apply_masking(seg.source, cell_findings, placeholders)
         cell = nb_out["cells"][seg.cell_index]
         _write_cell_source(cell, masked_source, seg.source_was_list)
     for cell in nb_out.get("cells", []):
