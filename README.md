@@ -1,5 +1,28 @@
 # SafePrompt Guard
 
+## SafePromptGuard v5 - 한국 개인정보 탐지와 측정 가능한 정확도
+
+v5는 탐지기를 "모양 → 검증 → 예외" 3단계로 다시 만들고, 탐지 결과를 값 단위로 채점하는 평가 체계를 추가했습니다. 설계는 [docs/DETECTORS.md](docs/DETECTORS.md)에 정리했습니다.
+
+- **한국 개인정보**: 주민·외국인·법인등록번호, 사업자등록번호(국세청 검증 숫자), 계좌, 여권(2021 신형 포함), 운전면허. 숫자만으로 구분되지 않는 값은 앞쪽 문맥("계좌", "여권" 등)으로 확정합니다.
+- **오탐 제거**: 전화번호 정규식이 `2026-06-26 10:00:00` 같은 타임스탬프를 잡던 문제, 카드번호 Luhn 미검증, `192.168.999.999` 같은 잘못된 IP, `a@b.com으로`처럼 한글 조사가 붙은 이메일 누락을 고쳤습니다.
+- **유출 차단**: Private Key는 헤더 줄만 가려서 키 본문이 그대로 남았습니다. 이제 `END`까지(잘린 붙여넣기면 끝까지) 가립니다. 할당형 비밀값은 값만 가려 `password=[MASKED_PASSWORD]`처럼 맥락을 남깁니다.
+- **서비스 토큰**: GitHub, OpenAI, Anthropic, Slack, Google, Stripe, Hugging Face 토큰을 문장 속에서도 잡습니다.
+- **예제 값 allowlist**: AWS 문서 예제 키, `example.com`, `your-api-key-here` 같은 placeholder, 환경변수 참조는 탐지하지 않습니다.
+- **정책 우선순위 버그 수정**: 이전에는 항상 가장 강한 조치(block)가 이겨서 allow 예외가 절대 적용되지 않았습니다. 이제 priority → 구체성 → 조치 강도 순입니다.
+- **평가**: 135개 회귀 평가셋(탐지기별 precision/recall, 알려진 한계 별도 표기)과, 탐지기 코드를 보지 않은 작성자가 만든 블라인드 평가셋 160개로 측정합니다.
+
+| 블라인드 test 77개 (첫 실행) | span F1 | 유출 케이스 | 케이스 통과 |
+|---|---:|---:|---:|
+| v4.2 | 0.603 | 17 | 51 / 77 |
+| **v5** | **0.990** | **1** | **74 / 77** |
+
+절차와 실패 분석은 [docs/EVAL_BLIND.md](docs/EVAL_BLIND.md), 회귀 평가 결과는 [docs/EVAL_REPORT.md](docs/EVAL_REPORT.md)에 있습니다.
+
+```bash
+python backend/scripts/evaluate_scan.py --fail-on-mismatch   # CI와 같은 게이트
+```
+
 ## SafePromptGuard v4 - Local AI Security Gateway
 
 SafePromptGuard v3가 외부 AI 공유 전 민감정보 탐지와 마스킹에 집중했다면, v4는 policy.yaml 기반 allow/mask/block 정책을 추가하여 탐지 결과를 조직 정책에 따라 처리하는 Local AI Security Gateway 구조로 확장했습니다.
@@ -31,7 +54,7 @@ Gitleaks CLI가 설치되어 있지 않으면 자동으로 skip되며, 기존 re
 ## 기능
 
 - **3단계 탐지**: 정규식 → 코드/로그 규칙 → Gemma(Ollama) 문맥 분석
-- **자동 마스킹**: API Key, 비밀번호, DB URL, 내부 IP/도메인 등
+- **자동 마스킹**: API Key·서비스 토큰, 비밀번호, Private Key, DB URL, 내부 IP/도메인, 주민·외국인·법인·사업자등록번호, 계좌, 여권, 운전면허, 전화번호, 카드번호, 이메일
 - **안전 프롬프트 생성**: 외부 AI에 바로 붙여넣을 수 있는 질문문
 - **파일 업로드**: 허용 확장자는 `shared/allowed_extensions.json` 한 곳에서 관리 (프론트·백엔드 공통)
 - **검사 이력 (서버)**: SQLite 로컬 DB (`backend/data/safeprompt.db`)
