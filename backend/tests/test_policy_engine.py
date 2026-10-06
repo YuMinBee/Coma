@@ -79,15 +79,15 @@ def test_policy_mask_when_no_block():
 
 
 def test_policy_allow_excludes_masking():
-    text = 'API_KEY = "example-token-123"'
+    text = 'API_KEY = "sbx-shared-ab12cd34"'
     config = PolicyConfig(
         policies=[
             PolicyRule(
-                id="dummy.secret.allow",
+                id="sandbox.api_key.allow",
                 detector="api_key",
                 severity="critical",
                 action="allow",
-                condition=PolicyCondition(contains="example"),
+                condition=PolicyCondition(contains="sbx-shared-"),
             )
         ]
     )
@@ -97,7 +97,66 @@ def test_policy_allow_excludes_masking():
     assert result.overall_action == "allow"
     assert result.findings
     assert "[MASKED_API_KEY]" not in result.masked_text
-    assert "example-token-123" in result.masked_text
+    assert "sbx-shared-ab12cd34" in result.masked_text
+
+
+def test_specific_allow_rule_overrides_generic_block():
+    # 이전에는 가장 강한 조치(block)가 항상 이겨서 allow 예외가 절대 적용되지 않았다.
+    config = PolicyConfig(
+        policies=[
+            PolicyRule(id="secret.api_key.block", detector="api_key", severity="critical", action="block"),
+            PolicyRule(
+                id="sandbox.api_key.allow",
+                detector="api_key",
+                action="allow",
+                condition=PolicyCondition(matches=r"sbx-shared-[a-z0-9]{8}"),
+            ),
+        ]
+    )
+
+    allowed = evaluate_findings([make_finding(value="sbx-shared-ab12cd34")], config)
+    blocked = evaluate_findings([make_finding(value="sk-live-real-0011223344")], config)
+
+    assert allowed.overall_action == "allow"
+    assert allowed.policy_decisions[0].policy_id == "sandbox.api_key.allow"
+    assert blocked.overall_action == "block"
+
+
+def test_matches_condition_requires_full_match():
+    config = PolicyConfig(
+        policies=[
+            PolicyRule(
+                id="sandbox.api_key.allow",
+                detector="api_key",
+                action="allow",
+                condition=PolicyCondition(matches=r"sbx-shared-[a-z0-9]{8}"),
+            ),
+        ]
+    )
+
+    result = evaluate_findings([make_finding(value="sbx-shared-ab12cd34-and-real-suffix")], config)
+
+    assert result.policy_decisions[0].policy_id is None
+    assert result.overall_action == "mask"
+
+
+def test_priority_overrides_specificity():
+    config = PolicyConfig(
+        policies=[
+            PolicyRule(
+                id="sandbox.api_key.allow",
+                detector="api_key",
+                action="allow",
+                condition=PolicyCondition(contains="sbx-shared-"),
+            ),
+            PolicyRule(id="freeze.api_key.block", detector="api_key", action="block", priority=10),
+        ]
+    )
+
+    result = evaluate_findings([make_finding(value="sbx-shared-ab12cd34")], config)
+
+    assert result.overall_action == "block"
+    assert result.policy_decisions[0].policy_id == "freeze.api_key.block"
 
 
 def test_unmatched_finding_defaults_to_mask():

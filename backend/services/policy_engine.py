@@ -21,6 +21,13 @@ DEFAULT_POLICY_PATH = Path(__file__).resolve().parents[1] / "config" / "policy.y
 TYPE_DETECTOR_MAP = {
     "AWS Access Key": "api_key",
     "API Key": "api_key",
+    "GitHub Token": "api_key",
+    "OpenAI API Key": "api_key",
+    "Anthropic API Key": "api_key",
+    "Slack Token": "api_key",
+    "Google API Key": "api_key",
+    "Stripe Secret Key": "api_key",
+    "Hugging Face Token": "api_key",
     "Private Key": "private_key",
     "JWT Token": "token",
     "Bearer Token": "token",
@@ -31,6 +38,13 @@ TYPE_DETECTOR_MAP = {
     "Email": "email",
     "Phone": "phone",
     "Credit Card": "credit_card",
+    "Resident Registration Number": "resident_registration_number",
+    "Foreigner Registration Number": "foreigner_registration_number",
+    "Corporate Registration Number": "corporate_registration_number",
+    "Business Registration Number": "business_registration_number",
+    "Bank Account": "bank_account",
+    "Passport Number": "passport_number",
+    "Driver License": "driver_license",
 }
 
 CATEGORY_DETECTOR_MAP = {
@@ -50,7 +64,20 @@ SEVERITY_ALIASES = {
 
 
 class PolicyCondition(BaseModel):
+    # contains: 유형·값 어디든 부분 일치 / equals: 값 전체 일치 / matches: 값 전체 정규식 일치
     contains: str | None = None
+    equals: str | None = None
+    matches: str | None = None
+
+    @field_validator("matches")
+    @classmethod
+    def validate_pattern(cls, value: str | None) -> str | None:
+        if value is not None:
+            re.compile(value)
+        return value
+
+    def is_empty(self) -> bool:
+        return not (self.contains or self.equals or self.matches)
 
 
 class PolicyRule(BaseModel):
@@ -59,6 +86,7 @@ class PolicyRule(BaseModel):
     severity: str | None = None
     action: PolicyAction
     condition: PolicyCondition | None = None
+    priority: int = 0
 
     @field_validator("detector")
     @classmethod
@@ -201,11 +229,25 @@ def _select_policy(
     ]
     if not matches:
         return None
-    return sorted(
+    # 예외 규칙이 동작하도록 구체적인 규칙(조건·심각도 지정)이 일반 규칙보다 우선한다.
+    # 같은 수준끼리는 더 강한 조치를 고른다.
+    return max(
         matches,
-        key=lambda policy: ACTION_PRIORITY[policy.action],
-        reverse=True,
-    )[0]
+        key=lambda policy: (
+            policy.priority,
+            _specificity(policy),
+            ACTION_PRIORITY[policy.action],
+        ),
+    )
+
+
+def _specificity(policy: PolicyRule) -> int:
+    score = 0
+    if policy.condition and not policy.condition.is_empty():
+        score += 2
+    if policy.severity is not None:
+        score += 1
+    return score
 
 
 def _policy_matches_finding(
@@ -221,8 +263,19 @@ def _policy_matches_finding(
         if policy.severity != finding_severity:
             return False
 
-    if policy.condition and policy.condition.contains:
-        needle = policy.condition.contains.lower()
+    condition = policy.condition
+    if condition is None:
+        return True
+
+    value = finding.exact_quote or finding.value
+    if condition.equals is not None and value != condition.equals:
+        return False
+
+    if condition.matches is not None and not re.fullmatch(condition.matches, value):
+        return False
+
+    if condition.contains:
+        needle = condition.contains.lower()
         haystack = "\n".join(
             part
             for part in (
@@ -292,7 +345,7 @@ def _load_simple_policy_yaml(raw: str) -> dict[str, Any]:
             current_condition = {}
             current["condition"] = current_condition
             continue
-        if current_condition is not None and key in {"contains"}:
+        if current_condition is not None and key in {"contains", "equals", "matches"}:
             current_condition[key] = value
         else:
             current[key] = value

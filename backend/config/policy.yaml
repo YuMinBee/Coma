@@ -1,3 +1,7 @@
+# 탐지 결과(detector)별 조치: allow(허용) / mask(마스킹) / block(전송 차단)
+# 규칙이 여러 개 맞으면 priority → 구체성(condition > severity) → 조치 강도 순으로 하나를 고른다.
+# 그래서 condition이 붙은 allow 규칙은 같은 detector의 일반 block 규칙보다 먼저 적용된다.
+# 매칭되는 규칙이 없으면 mask가 기본값이다.
 policies:
   - id: secret.api_key.block
     detector: api_key
@@ -6,12 +10,12 @@ policies:
 
   - id: internal.ip.mask
     detector: internal_ip
-    severity: medium
     action: mask
 
-  - id: dummy.secret.allow
-    detector: api_key
-    severity: low
-    action: allow
-    condition:
-      contains: example
+  # 조직 예외 예시: 사내 공용 샌드박스 키는 외부 AI에 그대로 보내도 된다.
+  # condition은 contains(부분 일치), equals(값 전체 일치), matches(값 전체 정규식) 중 하나 이상.
+  # - id: sandbox.api_key.allow
+  #   detector: api_key
+  #   action: allow
+  #   condition:
+  #     matches: "sbx-shared-[a-z0-9]{8}"
