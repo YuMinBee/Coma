@@ -1,5 +1,23 @@
 # SafePrompt Guard
 
+## SafePromptGuard v5.1 - 되돌릴 수 있는 마스킹
+
+마스킹한 내용으로 외부 AI에 물어보면 답변에도 `[MASKED_PHONE]` 같은 표시가 남습니다. 값이 여러 개면 AI가 어느 값을 말하는지 알 수 없고, 사용자가 원래 값을 손으로 다시 채워야 했습니다.
+
+- **번호 붙은 가림 표시**: 값마다 `[MASKED_PHONE_1]`, `[MASKED_PHONE_2]`처럼 번호를 붙입니다. 같은 값은 같은 번호라서 AI가 값들을 구분해서 답할 수 있습니다.
+- **AI 답변 복원**: 결과 패널의 "AI 답변 복원" 탭에 외부 AI 답변을 붙여 넣으면 가림 표시를 원래 값으로 되돌립니다. AI가 대괄호를 빼고 `MASKED_PHONE_1로`처럼 써도 되돌립니다. 복원은 브라우저 안에서 하고, 같은 기능을 `POST /api/restore`로도 제공합니다.
+- **원래 값은 남기지 않음**: 원래 값은 검사 응답의 `placeholders`에만 담기고 서버 검사 이력(SQLite)에는 저장하지 않습니다. 브라우저 검사 기록(localStorage)에는 이전까지 입력 원문 앞 1,200자와 탐지된 값이 평문으로 저장됐는데, 이제 마스킹된 내용만 저장합니다. 그래서 새로고침한 이전 기록에서는 복원할 수 없습니다.
+- **줄 단위 마스킹 버그 2개 수정** (둘 다 유출)
+  - 여러 줄짜리 Private Key를 한 줄 표시로 바꾸면 아래 줄 번호가 밀렸습니다. 그 결과 키 아래에 있는 위험 줄(예: `prod deployment failed`)이 가려지지 않았습니다.
+  - 노트북(.ipynb)의 텍스트 보기에서 셀 안 줄 번호를 전체 텍스트 줄 번호처럼 썼습니다. 그래서 엉뚱한 줄이 가려지고 위험 줄은 그대로 남았습니다.
+
+```text
+원문      spring.datasource.password=Qwer1234!  담당 010-1234-5678, 대리 010-9876-5432
+마스킹    spring.datasource.password=[MASKED_PASSWORD_1]  담당 [MASKED_PHONE_1], 대리 [MASKED_PHONE_2]
+AI 답변   비밀번호 [MASKED_PASSWORD_1]는 바꾸고 MASKED_PHONE_1로 먼저 연락하세요.
+복원      비밀번호 Qwer1234!는 바꾸고 010-1234-5678로 먼저 연락하세요.
+```
+
 ## SafePromptGuard v5 - 한국 개인정보 탐지와 측정 가능한 정확도
 
 v5는 탐지기를 "모양 → 검증 → 예외" 3단계로 다시 만들고, 탐지 결과를 값 단위로 채점하는 평가 체계를 추가했습니다. 설계는 [docs/DETECTORS.md](docs/DETECTORS.md)에 정리했습니다.
@@ -172,7 +190,7 @@ scripts\build-gui-exe.bat       # Windows
 | 환경 변수 | `SAFE_PROMPT_DB_PATH` 로 경로 변경 |
 | 조회 API | `GET /api/logs?limit=50` |
 
-브라우저 `localStorage` 이력(채팅 세션)과 별개로, **감사·통계용 서버 이력**입니다.
+브라우저 `localStorage` 이력(채팅 세션)과 별개로, **감사·통계용 서버 이력**입니다. 서버 이력에는 위험도·탐지 건수 같은 메타데이터만 남고, 브라우저 이력에는 원문 대신 마스킹된 내용만 저장합니다.
 
 ## 성능 측정 (팀원 실행 가이드)
 
@@ -270,6 +288,7 @@ curl http://localhost:8001/api/logs?limit=20
 2. **유출 위험 검사하기** 클릭
 3. 위험도 **높음**, 탐지 항목 확인
 4. **안전 프롬프트 복사** → ChatGPT/Gemini에 붙여넣기
+5. 받은 답변을 **AI 답변 복원** 탭에 붙여넣기 → 원래 값으로 되돌린 답변 복사
 
 ## 기술 스택
 
@@ -280,7 +299,7 @@ curl http://localhost:8001/api/logs?limit=20
 | 1차 탐지 | 정규식 (AWS Key, JWT, DB URL 등) |
 | 2차 탐지 | 개발 문맥 규칙 (prod, internal, .env 등) |
 | 3차 탐지 | Gemma via Ollama (로컬) |
-| 마스킹 | 위치 기반 + 줄 단위 치환 |
+| 마스킹 | 위치 기반 + 줄 단위 치환, 값별 번호 placeholder와 복원 |
 
 ## API
 
@@ -289,6 +308,7 @@ curl http://localhost:8001/api/logs?limit=20
 - `GET /api/logs` — 최근 검사 이력 (SQLite)
 - `POST /api/scan` — 텍스트 검사 `{ "text": "...", "use_gemma": true }`
 - `POST /api/scan/file` — 파일 업로드
+- `POST /api/restore` — AI 답변 속 가림 표시를 원래 값으로 복원 `{ "text": "...", "placeholders": [...] }` (검사 응답의 `placeholders`를 그대로 넘김, 저장하지 않음)
 
 ## 프로젝트 구조
 
