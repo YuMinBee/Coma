@@ -88,7 +88,16 @@ def _mask_rank(f: Finding) -> tuple[int, int]:
     return (TYPE_MASK_PRIORITY.get(f.type, 0), _span_len(f))
 
 
+def _contains(outer: Finding, inner: Finding) -> bool:
+    return outer.start <= inner.start and inner.end <= outer.end
+
+
 def _pick_span_winner(a: Finding, b: Finding) -> Finding:
+    # 한쪽이 다른 쪽을 완전히 포함하면 바깥쪽 라벨을 쓴다(키 블록 안의 줄, 키워드 줄 안의 IP).
+    if _contains(a, b) and not _contains(b, a):
+        return a
+    if _contains(b, a) and not _contains(a, b):
+        return b
     return a if _mask_rank(a) >= _mask_rank(b) else b
 
 
@@ -142,25 +151,28 @@ def mask_by_spans(text: str, findings: list[Finding]) -> str:
     return "".join(parts)
 
 
-def mask_by_lines(text: str, findings: list[Finding]) -> str:
+def _line_findings_as_spans(text: str, findings: list[Finding]) -> list[Finding]:
+    """줄 단위 finding을 원본 기준 span으로 바꾼다.
+
+    span을 먼저 가린 뒤 원래 줄 번호로 줄을 가리면, 여러 줄짜리 키 블록이 한 placeholder가 된 아래부터
+    줄 번호가 밀려 엉뚱한 줄이 가려졌다.
+    """
     lines = text.split("\n")
-    lines_to_mask: dict[int, str] = {}
-
+    starts = [0]
+    for line in lines[:-1]:
+        starts.append(starts[-1] + len(line) + 1)
+    spans: list[Finding] = []
     for f in findings:
-        if f.line is None or f.start is not None:
+        if f.start is not None or f.line is None or not 1 <= f.line <= len(lines):
             continue
-        if f.line not in lines_to_mask:
-            lines_to_mask[f.line] = _placeholder(f)
-
-    for line_no, placeholder in lines_to_mask.items():
-        idx = line_no - 1
-        if 0 <= idx < len(lines):
-            lines[idx] = placeholder
-
-    return "\n".join(lines)
+        start = starts[f.line - 1]
+        end = start + len(lines[f.line - 1])
+        if end > start:
+            spans.append(f.model_copy(update={"start": start, "end": end}))
+    return spans
 
 
 def apply_masking(text: str, findings: list[Finding]) -> str:
-    coalesced = coalesce_span_findings(findings)
-    masked = mask_by_spans(text, coalesced)
-    return mask_by_lines(masked, coalesced)
+    span_findings = [f for f in findings if f.start is not None and f.end is not None]
+    coalesced = coalesce_span_findings(span_findings + _line_findings_as_spans(text, findings))
+    return mask_by_spans(text, coalesced)

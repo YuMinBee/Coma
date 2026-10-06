@@ -1,3 +1,4 @@
+import asyncio
 import json
 import sys
 from pathlib import Path
@@ -14,6 +15,7 @@ from services.notebook_loader import (
     prepare_notebook_scan,
 )
 from services.masking import coalesce_span_findings
+from services.scanner import run_scan
 
 
 # 키 모양 문자열을 그대로 커밋하면 secret scanning 경보가 날 수 있어 실행 시점에 합친다.
@@ -89,3 +91,22 @@ if __name__ == "__main__":
     test_enrich_findings_cell_index()
     test_masked_notebook_masks_source_and_strips_outputs_metadata()
     print("all notebook tests passed")
+
+
+def test_notebook_text_view_masks_lines_by_global_line_numbers():
+    nb = {
+        "nbformat": 4,
+        "nbformat_minor": 5,
+        "metadata": {},
+        "cells": [
+            {"cell_type": "markdown", "metadata": {}, "source": "첫 셀\n둘째 줄"},
+            {"cell_type": "code", "metadata": {}, "source": "x = 1\nprod deploy\n", "outputs": [], "execution_count": 1},
+        ],
+    }
+    scan_text, parsed, segments = prepare_notebook_scan(json.dumps(nb))
+    result = asyncio.run(run_scan(scan_text, use_gemma=False, use_gitleaks=False, notebook_ctx=(parsed, segments)))
+
+    assert "첫 셀" in result.masked_text and "둘째 줄" in result.masked_text
+    assert "prod deploy" not in result.masked_text
+    masked_cells = json.loads(result.masked_notebook_json)["cells"]
+    assert "".join(masked_cells[1]["source"]).startswith("x = 1\n[MASKED_INFRA")

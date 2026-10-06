@@ -4,6 +4,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from services.regex_scanner import scan_by_regex
+from services.rule_scanner import scan_by_rules
 from services.masking import apply_masking, coalesce_span_findings
 
 
@@ -62,3 +63,15 @@ if __name__ == "__main__":
     test_private_key_body_is_masked()
     test_truncated_private_key_is_masked_to_end()
     print("all masking tests passed")
+
+
+def test_line_masks_stay_on_the_right_line_after_a_multiline_key():
+    # 키 블록(여러 줄)을 먼저 한 placeholder로 바꾸면 아래 줄 번호가 밀려 엉뚱한 줄이 가려졌다.
+    text = (
+        "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEAbody1\nbody2\n-----END RSA PRIVATE KEY-----\n"
+        "정상 줄입니다\nprod deployment failed"
+    )
+    findings = scan_by_regex(text) + scan_by_rules(text)
+    masked = apply_masking(text, findings)
+
+    assert masked.split("\n") == ["[MASKED_PRIVATE_KEY]", "정상 줄입니다", "[MASKED_INFRA]"]

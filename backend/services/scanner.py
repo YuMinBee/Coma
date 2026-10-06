@@ -194,6 +194,8 @@ async def run_scan(
         [f for f in all_findings if f.start is not None and f.end is not None]
     )
     all_findings = _sort_findings(span_findings + line_findings)
+    # 노트북이면 아래에서 줄 번호가 셀 기준으로 바뀐다. 전체 텍스트를 가릴 때는 바뀌기 전 finding을 쓴다.
+    text_findings = all_findings
 
     if segments:
         all_findings = enrich_findings_with_cells(all_findings, segments, text)
@@ -205,9 +207,17 @@ async def run_scan(
         policy_evaluation.policy_decisions,
         {"mask", "block"},
     )
+    mask_indexes = {
+        decision.finding_index
+        for decision in policy_evaluation.policy_decisions
+        if decision.policy_action in {"mask", "block"}
+    }
 
     risk_level, risk_score = _compute_risk(all_findings, gemma_level)
-    masked_text = apply_masking(text, findings_to_mask)
+    masked_text = apply_masking(
+        text,
+        [finding for index, finding in enumerate(text_findings) if index in mask_indexes],
+    )
     masked_notebook_json: str | None = None
     if nb and segments:
         masked_notebook_json = build_masked_notebook(nb, segments, findings_to_mask)
