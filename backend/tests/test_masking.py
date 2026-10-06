@@ -13,17 +13,13 @@ JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9
 def test_bearer_jwt_overlap_keeps_tail():
     text = f"Bearer {JWT} keep_this_tail"
     findings = scan_by_regex(text)
-    assert any(f.type == "Bearer Token" for f in findings)
-    assert any(f.type == "JWT Token" for f in findings)
 
-    coalesced = coalesce_span_findings(findings)
-    types = {f.type for f in coalesced}
-    assert "JWT Token" not in types
-    assert "Bearer Token" in types
+    # Bearer 값과 JWT가 같은 span이면 마스킹 우선순위가 높은 Bearer 하나만 남는다.
+    types = {f.type for f in coalesce_span_findings(findings)}
+    assert types == {"Bearer Token"}
 
     masked = apply_masking(text, findings)
-    assert "keep_this_tail" in masked
-    assert "[MASKED_TOKEN]" in masked
+    assert masked == "Bearer [MASKED_TOKEN] keep_this_tail"
     assert JWT not in masked
 
 
@@ -35,7 +31,34 @@ def test_coalesce_same_span_prefers_bearer():
     assert coalesced[0].type == "Bearer Token"
 
 
+def test_assignment_masks_value_and_keeps_key_name():
+    text = "spring.datasource.password=Qwer1234!\nnext_line"
+    masked = apply_masking(text, scan_by_regex(text))
+    assert masked == "spring.datasource.password=[MASKED_PASSWORD]\nnext_line"
+
+
+def test_private_key_body_is_masked():
+    text = (
+        "-----BEGIN RSA PRIVATE KEY-----\n"
+        "MIIEpAIBAAKCAQEAsecretbody\n"
+        "-----END RSA PRIVATE KEY-----\n"
+        "after"
+    )
+    masked = apply_masking(text, scan_by_regex(text))
+    assert "secretbody" not in masked
+    assert masked == "[MASKED_PRIVATE_KEY]\nafter"
+
+
+def test_truncated_private_key_is_masked_to_end():
+    text = "config:\n-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA"
+    masked = apply_masking(text, scan_by_regex(text))
+    assert masked == "config:\n[MASKED_PRIVATE_KEY]"
+
+
 if __name__ == "__main__":
     test_bearer_jwt_overlap_keeps_tail()
     test_coalesce_same_span_prefers_bearer()
+    test_assignment_masks_value_and_keeps_key_name()
+    test_private_key_body_is_masked()
+    test_truncated_private_key_is_masked_to_end()
     print("all masking tests passed")

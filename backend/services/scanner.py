@@ -111,6 +111,15 @@ def _detected_items(findings: list[Finding]) -> list[str]:
         "민감 설정 파일": "민감 설정 파일",
         "영업비밀 후보": "영업비밀 후보 문장",
         "고객/계약 정보": "고객·계약 정보",
+        "Resident Registration Number": "주민등록번호",
+        "Foreigner Registration Number": "외국인등록번호",
+        "Corporate Registration Number": "법인등록번호",
+        "Business Registration Number": "사업자등록번호",
+        "Bank Account": "계좌번호",
+        "Passport Number": "여권번호",
+        "Driver License": "운전면허번호",
+        "Phone": "전화번호",
+        "Credit Card": "카드번호",
     }
     for f in findings:
         label = type_map.get(f.type, f.type)

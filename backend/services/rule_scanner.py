@@ -8,7 +8,8 @@ RISK_KEYWORDS: list[tuple[str, str, str, str]] = [
     (r"\b(?:customer|client|vip)\b", "고객 관련 키워드", "CUSTOMER_INFO", "고객 또는 거래처 맥락이 포함된 줄입니다."),
     (r"\b(?:payment|salary|payroll|billing)\b", "결제/급여 키워드", "CUSTOMER_INFO", "결제, 급여, 청구 정보 맥락이 포함된 줄입니다."),
     (r"\b(?:admin|root|superuser)\b", "관리자 계정 키워드", "SECRET", "관리자 권한이나 계정 정보 맥락이 포함된 줄입니다."),
-    (r"\b(?:credential|secret|private)\b", "인증정보 키워드", "SECRET", "인증정보 또는 비밀값 맥락이 포함된 줄입니다."),
+    # "private"는 private method·repo·address처럼 무해한 쓰임이 많아 뺐다. 실제 키 블록은 Private Key 탐지기가 잡는다.
+    (r"\b(?:credential|secret)\b", "인증정보 키워드", "SECRET", "인증정보 또는 비밀값 맥락이 포함된 줄입니다."),
     (r"\b(?:algorithm|recommendation|ranking)\b", "알고리즘/추천 키워드", "TRADE_SECRET_CANDIDATE", "추천, 랭킹, 알고리즘 등 내부 로직 맥락이 포함된 줄입니다."),
     (r"\b(?:contract|단가|계약)\b", "계약/영업 키워드", "TRADE_SECRET_CANDIDATE", "계약 조건이나 영업 정보 맥락이 포함된 줄입니다."),
 ]

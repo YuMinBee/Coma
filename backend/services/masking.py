@@ -14,6 +14,20 @@ MASK_LABELS: dict[str, str] = {
     "Credit Card": "MASKED_CARD",
     "Internal Domain": "MASKED_DOMAIN",
     "내부 테이블/엔티티명": "MASKED_TABLE",
+    "GitHub Token": "MASKED_API_KEY",
+    "OpenAI API Key": "MASKED_API_KEY",
+    "Anthropic API Key": "MASKED_API_KEY",
+    "Slack Token": "MASKED_API_KEY",
+    "Google API Key": "MASKED_API_KEY",
+    "Stripe Secret Key": "MASKED_API_KEY",
+    "Hugging Face Token": "MASKED_API_KEY",
+    "Resident Registration Number": "MASKED_RRN",
+    "Foreigner Registration Number": "MASKED_FOREIGNER_ID",
+    "Corporate Registration Number": "MASKED_CORP_ID",
+    "Business Registration Number": "MASKED_BRN",
+    "Bank Account": "MASKED_ACCOUNT",
+    "Passport Number": "MASKED_PASSPORT",
+    "Driver License": "MASKED_DRIVER_LICENSE",
 }
 
 CATEGORY_MASK: dict[str, str] = {
@@ -26,13 +40,33 @@ CATEGORY_MASK: dict[str, str] = {
 
 # 겹치는 span이 있을 때 마스킹·표시에 남길 finding 우선순위 (클수록 우선)
 TYPE_MASK_PRIORITY: dict[str, int] = {
+    # 서비스별 형식으로 확인된 키는 일반 Bearer보다 우선한다("Bearer sk-proj-…"는 OpenAI 키 → 차단).
+    "AWS Access Key": 103,
+    "GitHub Token": 102,
+    "OpenAI API Key": 102,
+    "Anthropic API Key": 102,
+    "Slack Token": 102,
+    "Google API Key": 102,
+    "Stripe Secret Key": 102,
+    "Hugging Face Token": 102,
     "Bearer Token": 100,
     "Private Key": 95,
-    "AWS Access Key": 90,
     "JWT Token": 85,
     "API Key": 80,
     "Password": 75,
     "DB URL": 70,
+    "Resident Registration Number": 65,
+    "Foreigner Registration Number": 65,
+    "Passport Number": 62,
+    "Driver License": 62,
+    "Credit Card": 60,
+    "Bank Account": 55,
+    "Corporate Registration Number": 52,
+    "Business Registration Number": 50,
+    "Phone": 40,
+    "Email": 35,
+    "Internal IP": 30,
+    "Internal Domain": 25,
 }
 
 
