@@ -95,6 +95,10 @@ def _contains(outer: Finding, inner: Finding) -> bool:
 
 
 def _pick_span_winner(a: Finding, b: Finding) -> Finding:
+    # Gemma 문맥 탐지는 검증된 탐지(정규식·규칙·gitleaks)를 덮어쓰지 않는다. Gemma가 줄 전체를 짚으면
+    # 그 안의 API 키가 "문맥 위험"으로 바뀌어 차단 정책이 빠졌다. 가리는 범위는 합친 span 그대로다.
+    if (a.source == "gemma") != (b.source == "gemma"):
+        return b if a.source == "gemma" else a
     # 한쪽이 다른 쪽을 완전히 포함하면 바깥쪽 라벨을 쓴다(키 블록 안의 줄, 키워드 줄 안의 IP).
     if _contains(a, b) and not _contains(b, a):
         return a
